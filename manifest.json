@@ -2,14 +2,14 @@
   "name": "Waymark — OSM Toolkit",
   "short_name": "Waymark",
   "description": "Privacy-first OpenStreetMap mapping toolkit. No tracking. No cookies.",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#1a1a1a",
   "theme_color": "#6d4aff",
   "orientation": "portrait-primary",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
   ],
   "categories": ["education", "utilities"],
   "lang": "el-GR"

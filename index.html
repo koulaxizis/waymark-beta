@@ -7,16 +7,19 @@
   <meta name="theme-color" content="#6d4aff">
   <meta name="referrer" content="no-referrer">
 
+  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 
-  <link rel="manifest" href="/manifest.json">
+  <!-- PWA — relative path -->
+  <link rel="manifest" href="manifest.json">
 
-  <script src="/theme.js"></script>
-  <script src="/config.js"></script>
+  <!-- Scripts — relative paths -->
+  <script src="theme.js"></script>
+  <script src="config.js"></script>
 
   <title>Waymark — OSM Toolkit</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app-container">
@@ -68,23 +71,24 @@
 
     <footer class="footer">
       <span data-i18n="footer.privacy">No Cookies • No Tracking • No Ads</span>
-      <a href="https://github.com/koulaxizis/waymark" target="_blank" rel="noopener" data-i18n="footer.source">Source Code</a>
+      <span><a href="https://github.com/koulaxizis/waymark" target="_blank" rel="noopener" data-i18n="footer.source">Source Code</a></span>
     </footer>
   </div>
 
+  <!-- Scripts — ALL relative paths -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="/i18n.js" defer></script>
-  <script src="/app.js" defer></script>
-  <script src="/modules/nominatim.js" defer></script>
-  <script src="/modules/poi-viewer.js" defer></script>
-  <script src="/modules/gpx-editor.js" defer></script>
-  <script src="/modules/xml-generator.js" defer></script>
-  <script src="/modules/quality-checker.js" defer></script>
-  <script src="/modules/heatmap.js" defer></script>
-  <script src="/modules/tags-lookup.js" defer></script>
-  <script src="/modules/notes-browser.js" defer></script>
-  <script src="/modules/tutorial.js" defer></script>
-  <script src="/modules/osm-editor.js" defer></script>
+  <script src="i18n.js" defer></script>
+  <script src="app.js" defer></script>
+  <script src="modules/nominatim.js" defer></script>
+  <script src="modules/poi-viewer.js" defer></script>
+  <script src="modules/gpx-editor.js" defer></script>
+  <script src="modules/xml-generator.js" defer></script>
+  <script src="modules/quality-checker.js" defer></script>
+  <script src="modules/heatmap.js" defer></script>
+  <script src="modules/tags-lookup.js" defer></script>
+  <script src="modules/notes-browser.js" defer></script>
+  <script src="modules/tutorial.js" defer></script>
+  <script src="modules/osm-editor.js" defer></script>
 </body>
 </html>
