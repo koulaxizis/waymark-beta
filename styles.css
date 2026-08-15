@@ -406,3 +406,55 @@ input:checked + .slider:before { transform: translateX(20px); background-color: 
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* Module Toggle Panel Minimized State */
+.module-toggle-panel.minimized {
+  width: 48px !important;
+  overflow: hidden;
+}
+
+.module-toggle-panel.minimized .toggle-header {
+  display: none;
+}
+
+.module-toggle-panel.minimized .toggle-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem 0;
+}
+
+.module-toggle-panel.minimized .toggle-label {
+  display: none;
+}
+
+.module-toggle-panel.minimized .toggle-item {
+  flex-direction: row !important;
+  width: 36px !important;
+  justify-content: center !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.toggle-minimize-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  z-index: 10;
+  transition: color 0.2s;
+}
+
+.toggle-minimize-btn:hover {
+  color: var(--accent);
+}
+
+.module-toggle-panel.minimized .toggle-minimize-btn {
+  top: 0.25rem;
+  right: 50%;
+  transform: translateX(50%);
+}

@@ -9,8 +9,8 @@ const OFFLINE_FALLBACK = '/offline.html';
 const STATIC_ASSETS = [
   './',
   './index.html',
-  './app.html',          // ΝΕΟ
-  './favicon.svg',      // ΝΕΟ
+  './app.html',
+  './favicon.svg',
   './styles.css',
   './app.js',
   './i18n.js',
@@ -32,6 +32,7 @@ const STATIC_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 ];
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -75,11 +76,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // API calls — Network First (don't cache API responses)
+  // API calls — Network First (proxy + OSM APIs)
   if (url.hostname.includes('overpass-api.de') ||
       url.hostname.includes('nominatim.openstreetmap.org') ||
       url.hostname.includes('api.openstreetmap.org') ||
-      (WAYMARK_CONFIG && url.hostname.includes(WAYMARK_CONFIG.PROXY_URL))) {
+      url.hostname.includes('workers.dev')) {
     event.respondWith(
       fetch(event.request).then((response) => response).catch(() => {
         return caches.match(OFFLINE_FALLBACK);

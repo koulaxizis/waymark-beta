@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head><title>Generate Icons</title></head>
+<body>
+<h1>Paste your SVG content here and download icons</h1>
+<canvas id="c192" width="192" height="192"></canvas>
+<canvas id="c512" width="512" height="512"></canvas>
+<button onclick="download192()">Download 192.png</button>
+<button onclick="download512()">Download 512.png</button>
+<script>
+const svgContent = `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><circle cx="32" cy="32" r="30" fill="#6d4aff"/><path d="M32 14 C24 14 18 20 18 28 C18 38 32 52 32 52 C32 52 46 38 46 28 C46 20 40 14 32 14 Z" fill="none" stroke="white" stroke-width="3" stroke-linejoin="round"/><circle cx="32" cy="28" r="4" fill="white"/></svg>`;
+
+function drawToCanvas(canvasId, size) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.onload = () => {
+    ctx.drawImage(img, 0, 0, size, size);
+  };
+  img.src = 'data:image/svg+xml;base64,' + btoa(svgContent);
+}
+
+drawToCanvas('c192', 192);
+drawToCanvas('c512', 512);
+
+function download192() {
+  const a = document.createElement('a');
+  a.download = 'icon-192.png';
+  a.href = document.getElementById('c192').toDataURL('image/png');
+  a.click();
+}
+
+function download512() {
+  const a = document.createElement('a');
+  a.download = 'icon-512.png';
+  a.href = document.getElementById('c512').toDataURL('image/png');
+  a.click();
+}
+</script>
+</body>
+</html>

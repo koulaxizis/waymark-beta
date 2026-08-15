@@ -89,6 +89,23 @@ function handleMapClick(e) {
 
 function initModuleToggles() {
   const list = document.getElementById('toggleList');
+  
+  // Add minimize button to panel header
+  const panelHeader = document.querySelector('.toggle-header');
+  if (panelHeader) {
+    const minBtn = document.createElement('button');
+    minBtn.className = 'toggle-minimize-btn';
+    minBtn.innerHTML = '−';
+    minBtn.title = getCurrentLang() === 'el' ? 'Ελαχιστοποίηση' : 'Minimize';
+    minBtn.addEventListener('click', () => {
+      const panel = document.querySelector('.module-toggle-panel');
+      panel.classList.toggle('minimized');
+      minBtn.innerHTML = panel.classList.contains('minimized') ? '+' : '−';
+      minBtn.title = getCurrentLang() === 'el' ? 'Μεγιστοποίηση' : 'Maximize';
+    });
+    panelHeader.appendChild(minBtn);
+  }
+
   MODULES.forEach(mod => {
     const item = document.createElement('div');
     item.className = 'toggle-item';
@@ -121,44 +138,15 @@ async function toggleModule(mod, enabled) {
     });
 
     APP_STATE.activeModules[mod.id] = true;
-    panel.classList.remove('hidden', 'minimized');
+    panel.classList.remove('hidden');
     content.innerHTML = '';
-
-    // Add header with minimize button
-    const header = document.createElement('div');
-    header.className = 'module-panel-header';
-    const isEl = getCurrentLang() === 'el';
-    header.innerHTML = `
-      <h2>${mod.icon} ${t(mod.name_key)}</h2>
-      <button class="panel-minimize-btn" id="panelMinimizeBtn" title="${isEl ? 'Ελαχιστοποίηση' : 'Minimize'}">—</button>
-    `;
-    content.appendChild(header);
-
-    // Wrap module content in a body div
-    const body = document.createElement('div');
-    body.className = 'module-panel-body';
-    content.appendChild(body);
 
     const initFn = 'init' + mod.id.replace(/-./g, x => x[1].toUpperCase()).replace(/^./, c => c.toUpperCase());
     if (typeof window[initFn] === 'function') {
-      window[initFn](map, body, APP_STATE);
+      window[initFn](map, content, APP_STATE);
     } else {
-      body.innerHTML = `<p style="color: var(--fg-muted);">${t('common.loading')}</p>`;
+      content.innerHTML = `<p style="color: var(--fg-muted);">${t('common.loading')}</p>`;
     }
-
-    // Minimize button handler
-    document.getElementById('panelMinimizeBtn').addEventListener('click', () => {
-      panel.classList.toggle('minimized');
-      const btn = document.getElementById('panelMinimizeBtn');
-      if (panel.classList.contains('minimized')) {
-        btn.textContent = '+';
-        btn.title = isEl ? 'Μεγιστοποίηση' : 'Maximize';
-      } else {
-        btn.textContent = '—';
-        btn.title = isEl ? 'Ελαχιστοποίηση' : 'Minimize';
-      }
-    });
-
   } else {
     APP_STATE.activeModules[mod.id] = false;
     panel.classList.add('hidden');
@@ -168,7 +156,6 @@ async function toggleModule(mod, enabled) {
 
 function registerSW() {
   if ('serviceWorker' in navigator) {
-    // Relative path — starts from current directory
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 }
