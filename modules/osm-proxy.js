@@ -1,11 +1,8 @@
 /* =========================================================
    WAYMARK — Cloudflare Worker (CORS Proxy)
-   Deploys to Cloudflare Workers free tier (100k req/day).
-   Proxies browser requests to api.openstreetmap.org
-   with proper CORS headers.
+   Routes /oauth2/* to www.openstreetmap.org
+   Routes /api/* to api.openstreetmap.org
    ========================================================= */
-
-const OSM_API_BASE = 'https://api.openstreetmap.org';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -16,21 +13,23 @@ const CORS_HEADERS = {
 
 export default {
   async fetch(request) {
-    // Handle preflight requests
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
     const url = new URL(request.url);
 
-    // Rewrite the URL to point to api.openstreetmap.org
-    const targetUrl = OSM_API_BASE + url.pathname + url.search;
+    // Route OAuth requests to www.openstreetmap.org
+    // Route API requests to api.openstreetmap.org
+    const targetBase = url.pathname.startsWith('/oauth2')
+      ? 'https://www.openstreetmap.org'
+      : 'https://api.openstreetmap.org';
 
-    // Clone request headers, force a proper User-Agent
+    const targetUrl = targetBase + url.pathname + url.search;
+
     const headers = new Headers(request.headers);
     headers.set('User-Agent', 'Waymark/1.0 (+https://github.com/koulaxizis/waymark)');
 
-    // Forward the request to OSM API
     const proxyRequest = new Request(targetUrl, {
       method: request.method,
       headers: headers,
@@ -40,7 +39,6 @@ export default {
     try {
       const response = await fetch(proxyRequest);
 
-      // Return response with CORS headers added
       const responseHeaders = new Headers(response.headers);
       Object.entries(CORS_HEADERS).forEach(([k, v]) => {
         responseHeaders.set(k, v);
@@ -51,7 +49,6 @@ export default {
         statusText: response.statusText,
         headers: responseHeaders,
       });
-
     } catch (error) {
       return new Response(JSON.stringify({ error: error.message }), {
         status: 502,

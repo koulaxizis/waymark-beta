@@ -1,6 +1,7 @@
 /* =========================================================
    WAYMARK — Theme Management
    Auto-detect prefers-color-scheme → sessionStorage
+   No coupling with map layers anymore.
    ========================================================= */
 
 function detectTheme() {
@@ -20,15 +21,15 @@ function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   sessionStorage.setItem('waymark_theme', theme);
 
-  if (window.refreshMapTheme) {
-    window.refreshMapTheme(theme);
-  }
+  // Removed: no more automatic map layer switching
+  // The user's map layer choice is now completely independent
 }
 
 function toggleTheme() {
   applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
 }
 
+// Listen for system theme changes (only if user hasn't set preference)
 if (window.matchMedia) {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
     if (!sessionStorage.getItem('waymark_theme')) {
@@ -37,8 +38,10 @@ if (window.matchMedia) {
   });
 }
 
+// Apply immediately (before DOMContentLoaded to prevent flash)
 applyTheme(currentTheme);
 
+// Export
 window.toggleTheme = toggleTheme;
 window.getCurrentTheme = () => currentTheme;
 window.applyTheme = applyTheme;

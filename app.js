@@ -45,15 +45,18 @@ function initMap() {
 
   LAYERS.osm.addTo(map);
   map.on('click', handleMapClick);
-}
 
-function refreshMapTheme(theme) {
-  if (APP_STATE.currentLayer === 'dark' && theme === 'light') {
-    switchLayer('osm');
-    updateLayerButtons('osm');
-  } else if (APP_STATE.currentLayer === 'osm' && theme === 'dark') {
-    switchLayer('dark');
-    updateLayerButtons('dark');
+  // Ask for user location on load
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+      },
+      (err) => {
+        console.log('Geolocation denied or unavailable, using default location.');
+      },
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
   }
 }
 
@@ -108,6 +111,7 @@ async function toggleModule(mod, enabled) {
   const content = document.getElementById('moduleContent');
 
   if (enabled) {
+    // Disable other modules
     MODULES.forEach(m => {
       if (m.id !== mod.id && APP_STATE.activeModules[m.id]) {
         APP_STATE.activeModules[m.id] = false;
@@ -117,15 +121,44 @@ async function toggleModule(mod, enabled) {
     });
 
     APP_STATE.activeModules[mod.id] = true;
-    panel.classList.remove('hidden');
+    panel.classList.remove('hidden', 'minimized');
     content.innerHTML = '';
+
+    // Add header with minimize button
+    const header = document.createElement('div');
+    header.className = 'module-panel-header';
+    const isEl = getCurrentLang() === 'el';
+    header.innerHTML = `
+      <h2>${mod.icon} ${t(mod.name_key)}</h2>
+      <button class="panel-minimize-btn" id="panelMinimizeBtn" title="${isEl ? 'Ελαχιστοποίηση' : 'Minimize'}">—</button>
+    `;
+    content.appendChild(header);
+
+    // Wrap module content in a body div
+    const body = document.createElement('div');
+    body.className = 'module-panel-body';
+    content.appendChild(body);
 
     const initFn = 'init' + mod.id.replace(/-./g, x => x[1].toUpperCase()).replace(/^./, c => c.toUpperCase());
     if (typeof window[initFn] === 'function') {
-      window[initFn](map, content, APP_STATE);
+      window[initFn](map, body, APP_STATE);
     } else {
-      content.innerHTML = `<p style="color: var(--fg-muted);">${t('common.loading')}</p>`;
+      body.innerHTML = `<p style="color: var(--fg-muted);">${t('common.loading')}</p>`;
     }
+
+    // Minimize button handler
+    document.getElementById('panelMinimizeBtn').addEventListener('click', () => {
+      panel.classList.toggle('minimized');
+      const btn = document.getElementById('panelMinimizeBtn');
+      if (panel.classList.contains('minimized')) {
+        btn.textContent = '+';
+        btn.title = isEl ? 'Μεγιστοποίηση' : 'Maximize';
+      } else {
+        btn.textContent = '—';
+        btn.title = isEl ? 'Ελαχιστοποίηση' : 'Minimize';
+      }
+    });
+
   } else {
     APP_STATE.activeModules[mod.id] = false;
     panel.classList.add('hidden');
@@ -135,7 +168,8 @@ async function toggleModule(mod, enabled) {
 
 function registerSW() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    // Relative path — starts from current directory
+    navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 }
 
@@ -170,4 +204,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.APP_STATE = APP_STATE;
 window.MODULES = MODULES;
-window.refreshMapTheme = refreshMapTheme;

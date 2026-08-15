@@ -9,6 +9,8 @@ const OFFLINE_FALLBACK = '/offline.html';
 const STATIC_ASSETS = [
   './',
   './index.html',
+  './app.html',          // ΝΕΟ
+  './favicon.svg',      // ΝΕΟ
   './styles.css',
   './app.js',
   './i18n.js',
@@ -30,7 +32,6 @@ const STATIC_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 ];
-
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {

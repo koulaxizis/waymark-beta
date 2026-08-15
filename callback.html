@@ -103,7 +103,7 @@
           sessionStorage.setItem('osm_access_token', accessToken);
           sessionStorage.removeItem('pkce_code_verifier');
           msgEl.textContent = 'Login successful! Redirecting...';
-          window.location.href = '/';
+          window.location.href = 'app.html';
         } else {
           throw new Error('No access_token in response');
         }

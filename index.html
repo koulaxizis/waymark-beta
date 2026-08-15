@@ -2,93 +2,404 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="description" content="Waymark — Privacy-first OpenStreetMap mapping toolkit">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Waymark — Privacy-first OpenStreetMap mapping toolkit. No cookies. No tracking. No ads.">
   <meta name="theme-color" content="#6d4aff">
-  <meta name="referrer" content="no-referrer">
+  <meta name="referrer" content="origin">
 
-  <!-- Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-
-  <!-- PWA — relative path -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="manifest" href="manifest.json">
 
-  <!-- Scripts — relative paths -->
   <script src="theme.js"></script>
-  <script src="config.js"></script>
 
-  <title>Waymark — OSM Toolkit</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>Waymark — Privacy-First OSM Toolkit</title>
+  <style>
+    /* Inline minimal styles for landing page */
+    :root {
+      --bg: #1a1a1a;
+      --bg-secondary: #252525;
+      --fg: #e0e0e0;
+      --fg-muted: #a0a0a0;
+      --accent: #6d4aff;
+      --accent-hover: #7f63ff;
+      --border: #333;
+    }
+
+    [data-theme="light"] {
+      --bg: #f5f5f5;
+      --bg-secondary: #ffffff;
+      --fg: #1a1a1a;
+      --fg-muted: #666;
+      --border: #ddd;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 900px; margin: 0 auto; padding: 0 1.5rem; }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--fg);
+    }
+
+    .logo svg { width: 28px; height: 28px; }
+
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .theme-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    [data-theme="dark"] .icon-sun { display: inline; }
+    [data-theme="dark"] .icon-moon { display: none; }
+    [data-theme="light"] .icon-sun { display: none; }
+    [data-theme="light"] .icon-moon { display: inline; }
+
+    .lang-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg);
+      padding: 0.35rem 0.6rem;
+      border-radius: 18px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 4rem 1.5rem 3rem;
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 6vw, 3.5rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 1rem;
+    }
+
+    .hero h1 .accent { color: var(--accent); }
+
+    .hero p {
+      font-size: clamp(1rem, 3vw, 1.25rem);
+      color: var(--fg-muted);
+      max-width: 600px;
+      margin: 0 auto 2rem;
+    }
+
+    .cta-btn {
+      display: inline-block;
+      background: var(--accent);
+      color: white;
+      text-decoration: none;
+      padding: 1rem 2.5rem;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    .cta-btn:hover { background: var(--accent-hover); }
+
+    /* Privacy banner */
+    .privacy-banner {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      padding: 1.5rem;
+      margin: 2rem 0;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: var(--fg-muted);
+    }
+
+    /* Features */
+    .features {
+      padding: 3rem 0;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+      margin-top: 2rem;
+    }
+
+    .feature-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: left;
+    }
+
+    .feature-card .icon {
+      font-size: 2rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .feature-card h3 {
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .feature-card p {
+      font-size: 0.9rem;
+      color: var(--fg-muted);
+    }
+
+    /* Tech stack */
+    .tech {
+      padding: 2rem 0;
+      text-align: center;
+    }
+
+    .tech-badges {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    .tech-badge {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      padding: 0.4rem 1rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      color: var(--fg-muted);
+    }
+
+    /* Footer */
+    footer {
+      padding: 2rem 1.5rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--fg-muted);
+    }
+
+    footer a { color: var(--accent); text-decoration: none; }
+
+    @media (max-width: 768px) {
+      .hero { padding: 2.5rem 1rem; }
+      .features-grid { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
-  <div class="app-container">
-    <header class="header">
-      <div style="display: flex; align-items: center; gap: 0.75rem;">
-        <h1 data-i18n="app.title">Waymark</h1>
-        <span class="header-subtitle" data-i18n="app.subtitle">OSM Mapping Toolkit</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <div class="header-status">
-          <span class="status-dot" id="onlineStatus"></span>
-          <span id="connectionStatus">Online</span>
-        </div>
-        <button class="theme-toggle" onclick="toggleLanguage()"
-                data-i18n-title="lang.toggle" title="EN / EL" style="font-size: 0.75rem; width: auto; padding: 0 0.5rem;">
-          EN/EL
-        </button>
-        <button class="theme-toggle" onclick="toggleTheme()"
-                data-i18n-title="theme.toggle" title="Toggle theme">
-          <span class="icon-sun">☀️</span>
-          <span class="icon-moon">🌙</span>
-        </button>
-        <button class="theme-toggle" onclick="document.querySelector('input[data-module=tutorial]').click()"
-                title="Tutorial" style="font-size: 1rem;">?</button>
-      </div>
-    </header>
+  <header>
+    <a href="index.html" class="logo">
+      <svg viewBox="0 0 64 64" width="32" height="32">
+        <circle cx="32" cy="32" r="30" fill="#6d4aff"/>
+        <path d="M32 14 C24 14 18 20 18 28 C18 38 32 52 32 52 C32 52 46 38 46 28 C46 20 40 14 32 14 Z"
+              fill="none" stroke="white" stroke-width="3" stroke-linejoin="round"/>
+        <circle cx="32" cy="28" r="4" fill="white"/>
+      </svg>
+      <span>Waymark</span>
+    </a>
+    <div class="header-actions">
+      <button class="lang-btn" id="langToggle">EN / EL</button>
+      <button class="theme-btn" onclick="toggleTheme()">
+        <span class="icon-sun">☀️</span>
+        <span class="icon-moon">🌙</span>
+      </button>
+    </div>
+  </header>
 
-    <main class="map-container">
-      <div id="map"></div>
+  <section class="hero">
+    <div class="container">
+      <h1>Explore. Map. <span class="accent">Contribute.</span></h1>
+      <p id="heroDesc">A privacy-first Progressive Web App for discovering and contributing to OpenStreetMap. Works offline. No tracking. No ads. Ever.</p>
+      <a href="app.html" class="cta-btn" id="launchBtn">🚀 Launch App</a>
+    </div>
+  </section>
 
-      <div class="layer-selector" id="layerSelector">
-        <button class="layer-btn active" data-layer="osm" data-i18n="layer.osm">Standard</button>
-        <button class="layer-btn" data-layer="dark" data-i18n="layer.dark">Dark</button>
-        <button class="layer-btn" data-layer="satellite" data-i18n="layer.satellite">Satellite</button>
-        <button class="layer-btn" data-layer="topo" data-i18n="layer.topo">Topo</button>
-      </div>
-
-      <div class="module-toggle-panel">
-        <div class="toggle-header">
-          <h3 data-i18n="modules.title">Modules</h3>
-        </div>
-        <div class="toggle-list" id="toggleList"></div>
-      </div>
-
-      <div class="module-panel hidden" id="modulePanel">
-        <div id="moduleContent"></div>
-      </div>
-    </main>
-
-    <footer class="footer">
-      <span data-i18n="footer.privacy">No Cookies • No Tracking • No Ads</span>
-      <span><a href="https://github.com/koulaxizis/waymark" target="_blank" rel="noopener" data-i18n="footer.source">Source Code</a></span>
-    </footer>
+  <div class="container">
+    <div class="privacy-banner">
+      <span>🍪 No Cookies</span>
+      <span>📊 No Tracking</span>
+      <span>📢 No Ads</span>
+      <span>💰 No Sponsors</span>
+      <span>🔓 Open Source</span>
+      <span>🔐 Privacy First</span>
+    </div>
   </div>
 
-  <!-- Scripts — ALL relative paths -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="i18n.js" defer></script>
-  <script src="app.js" defer></script>
-  <script src="modules/nominatim.js" defer></script>
-  <script src="modules/poi-viewer.js" defer></script>
-  <script src="modules/gpx-editor.js" defer></script>
-  <script src="modules/xml-generator.js" defer></script>
-  <script src="modules/quality-checker.js" defer></script>
-  <script src="modules/heatmap.js" defer></script>
-  <script src="modules/tags-lookup.js" defer></script>
-  <script src="modules/notes-browser.js" defer></script>
-  <script src="modules/tutorial.js" defer></script>
-  <script src="modules/osm-editor.js" defer></script>
+  <section class="features">
+    <div class="container">
+      <h2 style="text-align: center; font-size: 1.5rem;" id="featuresTitle">Features</h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="icon">🗺️</div>
+          <h3 id="feat1Title">Multiple Map Layers</h3>
+          <p id="feat1Desc">Standard, Dark, Satellite, and Topographic views — all with offline tile caching.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">📍</div>
+          <h3 id="feat2Title">POI Discovery</h3>
+          <p id="feat2Desc">Find cafes, pharmacies, bus stops, and more near you using the Overpass API.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">📡</div>
+          <h3 id="feat3Title">GPX Editor</h3>
+          <p id="feat3Desc">Upload, view, edit, and download GPX tracks. All processing happens in your browser.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">📝</div>
+          <h3 id="feat4Title">OSM XML Export</h3>
+          <p id="feat4Desc">Create .osc files ready for upload to OpenStreetMap via JOSM or iD editor.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">📤</div>
+          <h3 id="feat5Title">Direct OSM Upload</h3>
+          <p id="feat5Desc">OAuth 2.0 PKCE authentication for secure, direct contribution to the map.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">📱</div>
+          <h3 id="feat6Title">Installable PWA</h3>
+          <p id="feat6Desc">Add to your home screen. Works offline with cached tiles. Native app experience.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">⚠️</div>
+          <h3 id="feat7Title">Quality Checker</h3>
+          <p id="feat7Desc">Identify data quality issues — unnamed roads, buildings without names, missing sources.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">📖</div>
+          <h3 id="feat8Title">Beginner Friendly</h3>
+          <p id="feat8Desc">Interactive tutorial, built-in tag reference, and bilingual interface (EN/EL).</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tech">
+    <div class="container">
+      <h3 style="color: var(--fg-muted);" id="techTitle">Built With</h3>
+      <div class="tech-badges">
+        <span class="tech-badge">Vanilla JS</span>
+        <span class="tech-badge">Leaflet.js</span>
+        <span class="tech-badge">Service Workers</span>
+        <span class="tech-badge">Overpass API</span>
+        <span class="tech-badge">Nominatim</span>
+        <span class="tech-badge">OAuth 2.0 PKCE</span>
+        <span class="tech-badge">Cloudflare Workers</span>
+        <span class="tech-badge">GitHub Pages</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Designed by Christos Koulaxizis</p>
+    <p style="margin-top: 0.5rem;">
+      <a href="app.html" id="footerLaunch">Launch App</a> •
+      <a href="https://github.com/koulaxizis/waymark" target="_blank" rel="noopener">Source Code</a> •
+      <span>No Cookies • No Tracking • No Ads</span>
+    </p>
+  </footer>
+
+  <!-- Minimal i18n for landing page -->
+  <script>
+    const LANDING_I18N = {
+      en: {
+        heroDesc: 'A privacy-first Progressive Web App for discovering and contributing to OpenStreetMap. Works offline. No tracking. No ads. Ever.',
+        launchBtn: '🚀 Launch App',
+        featuresTitle: 'Features',
+        feat1Title: 'Multiple Map Layers', feat1Desc: 'Standard, Dark, Satellite, and Topographic views — all with offline tile caching.',
+        feat2Title: 'POI Discovery', feat2Desc: 'Find cafes, pharmacies, bus stops, and more near you using the Overpass API.',
+        feat3Title: 'GPX Editor', feat3Desc: 'Upload, view, edit, and download GPX tracks. All processing happens in your browser.',
+        feat4Title: 'OSM XML Export', feat4Desc: 'Create .osc files ready for upload to OpenStreetMap via JOSM or iD editor.',
+        feat5Title: 'Direct OSM Upload', feat5Desc: 'OAuth 2.0 PKCE authentication for secure, direct contribution to the map.',
+        feat6Title: 'Installable PWA', feat6Desc: 'Add to your home screen. Works offline with cached tiles. Native app experience.',
+        feat7Title: 'Quality Checker', feat7Desc: 'Identify data quality issues — unnamed roads, buildings without names, missing sources.',
+        feat8Title: 'Beginner Friendly', feat8Desc: 'Interactive tutorial, built-in tag reference, and bilingual interface (EN/EL).',
+        techTitle: 'Built With',
+        footerLaunch: 'Launch App',
+      },
+      el: {
+        heroDesc: 'Μια εφαρμογή χαρτογράφησης Progressive Web App με απόλυτο σεβασμό στην ιδιωτικότητα, για εξερεύνηση και συμβολή στο OpenStreetMap. Λειτουργεί offline. Χωρίς παρακολούθηση. Χωρίς διαφημίσεις. Ποτέ.',
+        launchBtn: '🚀 Εκκίνηση Εφαρμογής',
+        featuresTitle: 'Δυνατότητες',
+        feat1Title: 'Πολλαπλά Στρώματα Χάρτη', feat1Desc: 'Κλασικό, Σκοτεινό, Δορυφορικό και Τοπογραφικό — όλα με offline caching.',
+        feat2Title: 'Ανακάλυψη POI', feat2Desc: 'Βρες cafes, φαρμακεία, στάσεις λεωφορείων και άλλα κοντά σου μέσω Overpass API.',
+        feat3Title: 'Επεξεργασία GPX', feat3Desc: 'Ανέβασμα, προβολή, επεξεργασία και λήψη GPX αρχείων. Όλη η επεξεργασία γίνεται στον browser σου.',
+        feat4Title: 'Εξαγωγή OSM XML', feat4Desc: 'Δημιουργία .osc αρχείων έτοιμων για ανέβασμα στο OpenStreetMap μέσω JOSM ή iD editor.',
+        feat5Title: 'Άμεσο Ανέβασμα OSM', feat5Desc: 'Ταυτοποίηση OAuth 2.0 PKCE για ασφαλή, άμεση συμβολή στον χάρτη.',
+        feat6Title: 'Εγκαταστάσιμη PWA', feat6Desc: 'Πρόσθεσέ την στην αρχική οθόνη. Λειτουργεί offline με cached tiles. Εμπειρία native app.',
+        feat7Title: 'Έλεγχος Ποιότητας', feat7Desc: 'Αναγνώριση προβλημάτων ποιότητας δεδομένων — ανώνυμοι δρόμοι, κτήρια χωρίς όνομα.',
+        feat8Title: 'Φιλικό για Αρχάριους', feat8Desc: 'Διαδραστικός οδηγός, ενσωματωμένη αναφορά tags και δίγλωσσο περιβάλλον (EN/EL).',
+        techTitle: 'Τεχνολογίες',
+        footerLaunch: 'Εκκίνηση',
+      }
+    };
+
+    let lang = sessionStorage.getItem('waymark_lang') ||
+      (navigator.language?.startsWith('el') ? 'el' : 'en');
+
+    function applyLandingI18n() {
+      const dict = LANDING_I18N[lang] || LANDING_I18N.en;
+      Object.entries(dict).forEach(([key, val]) => {
+        const el = document.getElementById(key);
+        if (el) {
+          if (el.tagName === 'A') el.textContent = val;
+          else el.textContent = val;
+        }
+      });
+      document.documentElement.lang = lang;
+    }
+
+    document.getElementById('langToggle').addEventListener('click', () => {
+      lang = lang === 'en' ? 'el' : 'en';
+      sessionStorage.setItem('waymark_lang', lang);
+      applyLandingI18n();
+    });
+
+    applyLandingI18n();
+  </script>
 </body>
 </html>

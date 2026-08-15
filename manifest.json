@@ -2,7 +2,7 @@
   "name": "Waymark — OSM Toolkit",
   "short_name": "Waymark",
   "description": "Privacy-first OpenStreetMap mapping toolkit. No tracking. No cookies.",
-  "start_url": "./",
+  "start_url": "app.html",
   "display": "standalone",
   "background_color": "#1a1a1a",
   "theme_color": "#6d4aff",
