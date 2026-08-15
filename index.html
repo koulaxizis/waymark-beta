@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="Waymark — Privacy-first OpenStreetMap mapping toolkit">
+  <meta name="theme-color" content="#6d4aff">
+  <meta name="referrer" content="no-referrer">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+
+  <link rel="manifest" href="/manifest.json">
+
+  <script src="/theme.js"></script>
+  <script src="/config.js"></script>
+
+  <title>Waymark — OSM Toolkit</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <h1 data-i18n="app.title">Waymark</h1>
+        <span class="header-subtitle" data-i18n="app.subtitle">OSM Mapping Toolkit</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <div class="header-status">
+          <span class="status-dot" id="onlineStatus"></span>
+          <span id="connectionStatus">Online</span>
+        </div>
+        <button class="theme-toggle" onclick="toggleLanguage()"
+                data-i18n-title="lang.toggle" title="EN / EL" style="font-size: 0.75rem; width: auto; padding: 0 0.5rem;">
+          EN/EL
+        </button>
+        <button class="theme-toggle" onclick="toggleTheme()"
+                data-i18n-title="theme.toggle" title="Toggle theme">
+          <span class="icon-sun">☀️</span>
+          <span class="icon-moon">🌙</span>
+        </button>
+        <button class="theme-toggle" onclick="document.querySelector('input[data-module=tutorial]').click()"
+                title="Tutorial" style="font-size: 1rem;">?</button>
+      </div>
+    </header>
+
+    <main class="map-container">
+      <div id="map"></div>
+
+      <div class="layer-selector" id="layerSelector">
+        <button class="layer-btn active" data-layer="osm" data-i18n="layer.osm">Standard</button>
+        <button class="layer-btn" data-layer="dark" data-i18n="layer.dark">Dark</button>
+        <button class="layer-btn" data-layer="satellite" data-i18n="layer.satellite">Satellite</button>
+        <button class="layer-btn" data-layer="topo" data-i18n="layer.topo">Topo</button>
+      </div>
+
+      <div class="module-toggle-panel">
+        <div class="toggle-header">
+          <h3 data-i18n="modules.title">Modules</h3>
+        </div>
+        <div class="toggle-list" id="toggleList"></div>
+      </div>
+
+      <div class="module-panel hidden" id="modulePanel">
+        <div id="moduleContent"></div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span data-i18n="footer.privacy">No Cookies • No Tracking • No Ads</span>
+      <a href="https://github.com/koulaxizis/waymark" target="_blank" rel="noopener" data-i18n="footer.source">Source Code</a>
+    </footer>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="/i18n.js" defer></script>
+  <script src="/app.js" defer></script>
+  <script src="/modules/nominatim.js" defer></script>
+  <script src="/modules/poi-viewer.js" defer></script>
+  <script src="/modules/gpx-editor.js" defer></script>
+  <script src="/modules/xml-generator.js" defer></script>
+  <script src="/modules/quality-checker.js" defer></script>
+  <script src="/modules/heatmap.js" defer></script>
+  <script src="/modules/tags-lookup.js" defer></script>
+  <script src="/modules/notes-browser.js" defer></script>
+  <script src="/modules/tutorial.js" defer></script>
+  <script src="/modules/osm-editor.js" defer></script>
+</body>
+</html>
