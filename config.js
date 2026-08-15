@@ -4,7 +4,7 @@
 
 const WAYMARK_CONFIG = {
   // OAuth 2.0 — from https://www.openstreetmap.org/oauth2/applications
-  OSM_CLIENT_ID: 'YOUR_CLIENT_ID_HERE',
+  OSM_CLIENT_ID: 'jzN7Vg3ipAflZ-zkwey4ozTfBFnoB_Qhv13KsvXkhIE',
 
   // Use beta for testing, stable for production
   REDIRECT_URI: 'https://koulaxizis.github.io/waymark-beta/callback.html',
