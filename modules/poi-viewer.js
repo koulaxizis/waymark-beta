@@ -1,24 +1,24 @@
 /* =========================================================
    WAYMARK — POI Viewer Module (Overpass API)
-   CORS-enabled. No backend needed.
+   With fallback server + proper error handling.
    ========================================================= */
 
 function initPoiViewer(map, container, appState) {
   const isEl = getCurrentLang() === 'el';
 
   const poiTypes = [
-    { value: 'amenity=cafe', label: '☕ ' + (isEl ? 'Cafes' : 'Cafes') },
-    { value: 'amenity=restaurant', label: '🍽️ ' + (isEl ? 'Εστιατόρια' : 'Restaurants') },
-    { value: 'amenity=bar', label: '🍺 ' + (isEl ? 'Μπαρ' : 'Bars') },
-    { value: 'shop=supermarket', label: '🛒 ' + (isEl ? 'Supermarket' : 'Supermarkets') },
-    { value: 'amenity=pharmacy', label: '💊 ' + (isEl ? 'Φαρμακεία' : 'Pharmacies') },
-    { value: 'amenity=hospital', label: '🏥 ' + (isEl ? 'Νοσοκομεία' : 'Hospitals') },
-    { value: 'amenity=fuel', label: '⛽ ' + (isEl ? 'Βενζινάδικα' : 'Fuel Stations') },
-    { value: 'amenity=atm', label: '💳 ' + (isEl ? 'ATM' : 'ATMs') },
-    { value: 'tourism=hotel', label: '🏨 ' + (isEl ? 'Ξενοδοχεία' : 'Hotels') },
-    { value: 'leisure=park', label: '🌳 ' + (isEl ? 'Πάρκα' : 'Parks') },
-    { value: 'highway=bus_stop', label: '🚌 ' + (isEl ? 'Στάσεις λεωφορείων' : 'Bus Stops') },
-    { value: 'amenity=parking', label: '🅿️ ' + (isEl ? 'Parking' : 'Parking') },
+    { value: 'amenity=cafe', label: '☕ Cafes' },
+    { value: 'amenity=restaurant', label: '🍽️ Restaurants' },
+    { value: 'amenity=bar', label: '🍺 Bars' },
+    { value: 'shop=supermarket', label: '🛒 Supermarkets' },
+    { value: 'amenity=pharmacy', label: '💊 Pharmacies' },
+    { value: 'amenity=hospital', label: '🏥 Hospitals' },
+    { value: 'amenity=fuel', label: '⛽ Fuel Stations' },
+    { value: 'amenity=atm', label: '💳 ATMs' },
+    { value: 'tourism=hotel', label: '🏨 Hotels' },
+    { value: 'leisure=park', label: '🌳 Parks' },
+    { value: 'highway=bus_stop', label: '🚌 Bus Stops' },
+    { value: 'amenity=parking', label: '🅿️ Parking' },
   ];
 
   const options = poiTypes.map(p => '<option value="' + p.value + '">' + p.label + '</option>').join('');
@@ -52,17 +52,14 @@ function initPoiViewer(map, container, appState) {
     resultsDiv.innerHTML = '<div class="spinner"></div>';
 
     const [key, val] = poiType.split('=');
-    const query = '[out:json][timeout:15];(' +
+    const query = '[out:json][timeout:25];(' +
       'node["' + key + '"="' + val + '"](around:' + radius + ',' + center.lat + ',' + center.lng + ');' +
       'way["' + key + '"="' + val + '"](around:' + radius + ',' + center.lat + ',' + center.lng + ');' +
       ');out body center;';
 
     try {
-      const response = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        body: query
-      });
-      const data = await response.json();
+      const fetchFn = window.safeOverpassFetch || safeOverpassFetch;
+      const data = await fetchFn(query, isEl);
 
       resultsDiv.innerHTML = '';
 
@@ -105,7 +102,13 @@ function initPoiViewer(map, container, appState) {
         map.fitBounds(group.getBounds(), { padding: [50, 50] });
       }
     } catch (error) {
-      resultsDiv.innerHTML = '<div class="result-item">' + t('common.error') + ': ' + error.message + '</div>';
+      let msg = error.message;
+      if (msg === 'Failed to fetch') {
+        msg = isEl
+          ? 'Αδυναμία σύνδεσης. Ίσως ο server είναι απασχολημένος — δοκίμασε ξανά.'
+          : 'Cannot connect. Server may be busy — try again.';
+      }
+      resultsDiv.innerHTML = '<div class="result-item">' + t('common.error') + ': ' + msg + '</div>';
     }
   });
 }

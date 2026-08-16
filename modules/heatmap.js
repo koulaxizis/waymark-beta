@@ -1,13 +1,52 @@
 /* =========================================================
    WAYMARK — Density Heatmap Module (Overpass API)
-   Visualizes POI density using circle markers.
-   Uses Overpass + clustered circle markers (no external deps).
+   With fallback server + proper error handling.
    ========================================================= */
+
+async function safeOverpassFetch(query, isEl) {
+  const servers = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+  ];
+
+  for (let i = 0; i < servers.length; i++) {
+    try {
+      const response = await fetch(servers[i], {
+        method: 'POST',
+        body: query
+      });
+
+      if (!response.ok) {
+        if (i < servers.length - 1) continue;
+        const text = await response.text();
+        throw new Error(text.substring(0, 150));
+      }
+
+      const ct = response.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        if (i < servers.length - 1) continue;
+        const text = await response.text();
+        throw new Error(text.substring(0, 150));
+      }
+
+      return await response.json();
+    } catch (err) {
+      if (err.message === 'Failed to fetch' && i < servers.length - 1) continue;
+      if (i < servers.length - 1) continue;
+      throw err;
+    }
+  }
+
+  throw new Error(isEl ? 'Αδυναμία σύνδεσης με Overpass API' : 'Cannot connect to Overpass API');
+}
 
 function initHeatmap(map, container, appState) {
   const isEl = getCurrentLang() === 'el';
 
   container.innerHTML = `
+    <style>
+      .hm-info { font-size: 0.8rem; color: var(--fg-muted); margin-bottom: 0.5rem; }
+    </style>
     <h2>🌡️ ${t('module.heatmap')}</h2>
     <div class="module-form">
       <div class="form-group">
@@ -39,11 +78,10 @@ function initHeatmap(map, container, appState) {
     const bounds = map.getBounds();
     const bbox = bounds.getSouth() + ',' + bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast();
 
-    const query = '[out:json][timeout:20];node["' + heatType + '"](' + bbox + ');out body;';
+    const query = '[out:json][timeout:25];node["' + heatType + '"](' + bbox + ');out body 500;';
 
     try {
-      const response = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query });
-      const data = await response.json();
+      const data = await safeOverpassFetch(query, isEl);
 
       if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
       appState.mapMarkers.forEach(m => map.removeLayer(m));
@@ -56,7 +94,6 @@ function initHeatmap(map, container, appState) {
         return;
       }
 
-      // Create circle markers with varying radius based on proximity
       heatLayer = L.layerGroup();
       points.forEach(pt => {
         const circle = L.circleMarker([pt.lat, pt.lon], {
@@ -76,7 +113,13 @@ function initHeatmap(map, container, appState) {
         '<small>' + (isEl ? 'Η διαφάνεια δείχνει πυκνότητα.' : 'Opacity indicates density.') + '</small>' +
         '</div>';
     } catch (err) {
-      resultsDiv.innerHTML = '<div class="result-item">' + t('common.error') + ': ' + err.message + '</div>';
+      let msg = err.message;
+      if (msg === 'Failed to fetch') {
+        msg = isEl
+          ? 'Αδυναμία σύνδεσης. Ίσως ο server είναι απασχολημένος — δοκίμασε ξανά.'
+          : 'Cannot connect. Server may be busy — try again.';
+      }
+      resultsDiv.innerHTML = '<div class="result-item">' + t('common.error') + ': ' + msg + '</div>';
     }
   });
 
@@ -90,3 +133,4 @@ function initHeatmap(map, container, appState) {
 }
 
 window.initHeatmap = initHeatmap;
+window.safeOverpassFetch = safeOverpassFetch;
