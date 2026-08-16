@@ -26,6 +26,8 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .error { color: #ff6b6b; }
   </style>
+  <!-- THIS WAS MISSING — config.js must load before the script runs -->
+  <script src="config.js"></script>
 </head>
 <body>
   <div style="text-align: center;">
@@ -34,14 +36,6 @@
   </div>
 
   <script>
-    /* =========================================================
-       OAuth 2.0 PKCE — Token Exchange
-       Runs entirely in the browser, no backend needed.
-       The token exchange goes through the Cloudflare Worker
-       proxy because api.openstreetmap.org may not send
-       CORS headers on the token endpoint.
-       ========================================================= */
-
     const CONFIG = window.WAYMARK_CONFIG || { PROXY_URL: '' };
 
     async function handleCallback() {
@@ -57,7 +51,7 @@
         spinnerEl.style.display = 'none';
         msgEl.textContent = 'OAuth error: ' + error;
         msgEl.classList.add('error');
-        setTimeout(() => window.location.href = '/', 3000);
+        setTimeout(() => window.location.href = 'app.html', 3000);
         return;
       }
 
@@ -65,7 +59,7 @@
         spinnerEl.style.display = 'none';
         msgEl.textContent = 'No authorization code received.';
         msgEl.classList.add('error');
-        setTimeout(() => window.location.href = '/', 3000);
+        setTimeout(() => window.location.href = 'app.html', 3000);
         return;
       }
 
@@ -74,7 +68,7 @@
         spinnerEl.style.display = 'none';
         msgEl.textContent = 'Missing PKCE verifier. Please try logging in again.';
         msgEl.classList.add('error');
-        setTimeout(() => window.location.href = '/', 3000);
+        setTimeout(() => window.location.href = 'app.html', 3000);
         return;
       }
 
