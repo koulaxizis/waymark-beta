@@ -10,27 +10,19 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="manifest" href="manifest.json">
 
-  <script src="theme.js"></script>
-
   <title>Waymark — Privacy-First OSM Toolkit</title>
   <style>
     /* Inline minimal styles for landing page */
     :root {
       --bg: #1a1a1a;
       --bg-secondary: #252525;
+      --bg-tertiary: #2e2e2e;
       --fg: #e0e0e0;
       --fg-muted: #a0a0a0;
       --accent: #6d4aff;
       --accent-hover: #7f63ff;
       --border: #333;
-    }
-
-    [data-theme="light"] {
-      --bg: #f5f5f5;
-      --bg-secondary: #ffffff;
-      --fg: #1a1a1a;
-      --fg-muted: #666;
-      --border: #ddd;
+      --success: #22c55e;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -76,25 +68,6 @@
       align-items: center;
     }
 
-    .theme-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--fg);
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      cursor: pointer;
-      font-size: 1.1rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    [data-theme="dark"] .icon-sun { display: inline; }
-    [data-theme="dark"] .icon-moon { display: none; }
-    [data-theme="light"] .icon-sun { display: none; }
-    [data-theme="light"] .icon-moon { display: inline; }
-
     .lang-btn {
       background: transparent;
       border: 1px solid var(--border);
@@ -104,6 +77,12 @@
       cursor: pointer;
       font-size: 0.75rem;
       font-weight: 600;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .lang-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
     }
 
     /* Hero */
@@ -174,6 +153,11 @@
       border-radius: 8px;
       padding: 1.5rem;
       text-align: left;
+      transition: border-color 0.2s;
+    }
+
+    .feature-card:hover {
+      border-color: var(--accent);
     }
 
     .feature-card .icon {
@@ -244,10 +228,6 @@
     </a>
     <div class="header-actions">
       <button class="lang-btn" id="langToggle">EN / EL</button>
-      <button class="theme-btn" onclick="toggleTheme()">
-        <span class="icon-sun">☀️</span>
-        <span class="icon-moon">🌙</span>
-      </button>
     </div>
   </header>
 
@@ -277,7 +257,7 @@
         <div class="feature-card">
           <div class="icon">🗺️</div>
           <h3 id="feat1Title">Multiple Map Layers</h3>
-          <p id="feat1Desc">Standard, Dark, Satellite, and Topographic views — all with offline tile caching.</p>
+          <p id="feat1Desc">Standard, Satellite, Cycle, and Transport views — all with offline tile caching.</p>
         </div>
         <div class="feature-card">
           <div class="icon">📍</div>
@@ -285,34 +265,44 @@
           <p id="feat2Desc">Find cafes, pharmacies, bus stops, and more near you using the Overpass API.</p>
         </div>
         <div class="feature-card">
-          <div class="icon">📡</div>
-          <h3 id="feat3Title">GPX Editor</h3>
-          <p id="feat3Desc">Upload, view, edit, and download GPX tracks. All processing happens in your browser.</p>
-        </div>
-        <div class="feature-card">
-          <div class="icon">📝</div>
-          <h3 id="feat4Title">OSM XML Export</h3>
-          <p id="feat4Desc">Create .osc files ready for upload to OpenStreetMap via JOSM or iD editor.</p>
-        </div>
-        <div class="feature-card">
           <div class="icon">📤</div>
-          <h3 id="feat5Title">Direct OSM Upload</h3>
-          <p id="feat5Desc">OAuth 2.0 PKCE authentication for secure, direct contribution to the map.</p>
+          <h3 id="feat3Title">OSM Editor</h3>
+          <p id="feat3Desc">Create and edit POIs directly on OpenStreetMap. OAuth 2.0 PKCE, check_date confirm, tag autocomplete.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">🏃</div>
+          <h3 id="feat4Title">Track Recorder</h3>
+          <p id="feat4Desc">Record GPS tracks in real time. Live polyline, waypoints, GPX export, and direct OSM upload.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">🏠</div>
+          <h3 id="feat5Title">Building Editor</h3>
+          <p id="feat5Desc">Draw building polygons by tapping vertices. 8 presets, upload directly to OSM. Mobile-first design.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">🛣️</div>
+          <h3 id="feat6Title">Road Editor</h3>
+          <p id="feat6Desc">Draw roads vertex-by-vertex. 12 highway types, one-way support, color-coded by type.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">🏘️</div>
+          <h3 id="feat7Title">Address Mapper</h3>
+          <p id="feat7Desc">Quick house number mapping with automatic street name detection. Batch mode for rapid surveying.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">🎯</div>
+          <h3 id="feat8Title">Quest Mode</h3>
+          <p id="feat8Desc">StreetComplete-style quests. Find POIs with missing data and answer simple questions to improve the map.</p>
         </div>
         <div class="feature-card">
           <div class="icon">📱</div>
-          <h3 id="feat6Title">Installable PWA</h3>
-          <p id="feat6Desc">Add to your home screen. Works offline with cached tiles. Native app experience.</p>
-        </div>
-        <div class="feature-card">
-          <div class="icon">⚠️</div>
-          <h3 id="feat7Title">Quality Checker</h3>
-          <p id="feat7Desc">Identify data quality issues — unnamed roads, buildings without names, missing sources.</p>
+          <h3 id="feat9Title">Installable PWA</h3>
+          <p id="feat9Desc">Add to your home screen. Works offline with cached tiles. Native app experience.</p>
         </div>
         <div class="feature-card">
           <div class="icon">📖</div>
-          <h3 id="feat8Title">Beginner Friendly</h3>
-          <p id="feat8Desc">Interactive tutorial, built-in tag reference, and bilingual interface (EN/EL).</p>
+          <h3 id="feat10Title">Beginner Friendly</h3>
+          <p id="feat10Desc">Interactive 15-step tutorial, built-in tag reference, and bilingual interface (EN/EL).</p>
         </div>
       </div>
     </div>
@@ -327,6 +317,7 @@
         <span class="tech-badge">Service Workers</span>
         <span class="tech-badge">Overpass API</span>
         <span class="tech-badge">Nominatim</span>
+        <span class="tech-badge">Geolocation API</span>
         <span class="tech-badge">OAuth 2.0 PKCE</span>
         <span class="tech-badge">Cloudflare Workers</span>
         <span class="tech-badge">GitHub Pages</span>
@@ -350,14 +341,16 @@
         heroDesc: 'A privacy-first Progressive Web App for discovering and contributing to OpenStreetMap. Works offline. No tracking. No ads. Ever.',
         launchBtn: '🚀 Launch App',
         featuresTitle: 'Features',
-        feat1Title: 'Multiple Map Layers', feat1Desc: 'Standard, Dark, Satellite, and Topographic views — all with offline tile caching.',
+        feat1Title: 'Multiple Map Layers', feat1Desc: 'Standard, Satellite, Cycle, and Transport views — all with offline tile caching.',
         feat2Title: 'POI Discovery', feat2Desc: 'Find cafes, pharmacies, bus stops, and more near you using the Overpass API.',
-        feat3Title: 'GPX Editor', feat3Desc: 'Upload, view, edit, and download GPX tracks. All processing happens in your browser.',
-        feat4Title: 'OSM XML Export', feat4Desc: 'Create .osc files ready for upload to OpenStreetMap via JOSM or iD editor.',
-        feat5Title: 'Direct OSM Upload', feat5Desc: 'OAuth 2.0 PKCE authentication for secure, direct contribution to the map.',
-        feat6Title: 'Installable PWA', feat6Desc: 'Add to your home screen. Works offline with cached tiles. Native app experience.',
-        feat7Title: 'Quality Checker', feat7Desc: 'Identify data quality issues — unnamed roads, buildings without names, missing sources.',
-        feat8Title: 'Beginner Friendly', feat8Desc: 'Interactive tutorial, built-in tag reference, and bilingual interface (EN/EL).',
+        feat3Title: 'OSM Editor', feat3Desc: 'Create and edit POIs directly on OpenStreetMap. OAuth 2.0 PKCE, check_date confirm, tag autocomplete.',
+        feat4Title: 'Track Recorder', feat4Desc: 'Record GPS tracks in real time. Live polyline, waypoints, GPX export, and direct OSM upload.',
+        feat5Title: 'Building Editor', feat5Desc: 'Draw building polygons by tapping vertices. 8 presets, upload directly to OSM. Mobile-first design.',
+        feat6Title: 'Road Editor', feat6Desc: 'Draw roads vertex-by-vertex. 12 highway types, one-way support, color-coded by type.',
+        feat7Title: 'Address Mapper', feat7Desc: 'Quick house number mapping with automatic street name detection. Batch mode for rapid surveying.',
+        feat8Title: 'Quest Mode', feat8Desc: 'StreetComplete-style quests. Find POIs with missing data and answer simple questions to improve the map.',
+        feat9Title: 'Installable PWA', feat9Desc: 'Add to your home screen. Works offline with cached tiles. Native app experience.',
+        feat10Title: 'Beginner Friendly', feat10Desc: 'Interactive 15-step tutorial, built-in tag reference, and bilingual interface (EN/EL).',
         techTitle: 'Built With',
         footerLaunch: 'Launch App',
       },
@@ -365,14 +358,16 @@
         heroDesc: 'Μια εφαρμογή χαρτογράφησης Progressive Web App με απόλυτο σεβασμό στην ιδιωτικότητα, για εξερεύνηση και συμβολή στο OpenStreetMap. Λειτουργεί offline. Χωρίς παρακολούθηση. Χωρίς διαφημίσεις. Ποτέ.',
         launchBtn: '🚀 Εκκίνηση Εφαρμογής',
         featuresTitle: 'Δυνατότητες',
-        feat1Title: 'Πολλαπλά Στρώματα Χάρτη', feat1Desc: 'Κλασικό, Σκοτεινό, Δορυφορικό και Τοπογραφικό — όλα με offline caching.',
-        feat2Title: 'Ανακάλυψη POI', feat2Desc: 'Βρες cafes, φαρμακεία, στάσεις λεωφορείων και άλλα κοντά σου μέσω Overpass API.',
-        feat3Title: 'Επεξεργασία GPX', feat3Desc: 'Ανέβασμα, προβολή, επεξεργασία και λήψη GPX αρχείων. Όλη η επεξεργασία γίνεται στον browser σου.',
-        feat4Title: 'Εξαγωγή OSM XML', feat4Desc: 'Δημιουργία .osc αρχείων έτοιμων για ανέβασμα στο OpenStreetMap μέσω JOSM ή iD editor.',
-        feat5Title: 'Άμεσο Ανέβασμα OSM', feat5Desc: 'Ταυτοποίηση OAuth 2.0 PKCE για ασφαλή, άμεση συμβολή στον χάρτη.',
-        feat6Title: 'Εγκαταστάσιμη PWA', feat6Desc: 'Πρόσθεσέ την στην αρχική οθόνη. Λειτουργεί offline με cached tiles. Εμπειρία native app.',
-        feat7Title: 'Έλεγχος Ποιότητας', feat7Desc: 'Αναγνώριση προβλημάτων ποιότητας δεδομένων — ανώνυμοι δρόμοι, κτήρια χωρίς όνομα.',
-        feat8Title: 'Φιλικό για Αρχάριους', feat8Desc: 'Διαδραστικός οδηγός, ενσωματωμένη αναφορά tags και δίγλωσσο περιβάλλον (EN/EL).',
+        feat1Title: 'Πολλαπλά Στρώματα Χάρτη', feat1Desc: 'Κλασικό, Δορυφορικό, Ποδηλατικό και Μεταφορών — όλα με offline caching.',
+        feat2Title: 'Ανακάλυψη POI', feat2Desc: 'Βρες καφέ, φαρμακεία, στάσεις λεωφορείων και άλλα κοντά σου μέσω Overpass API.',
+        feat3Title: 'OSM Editor', feat3Desc: 'Δημιούργησε και επεξεργάσου POIs απευθείας στο OpenStreetMap. OAuth 2.0 PKCE, επιβεβαίωση check_date, autocomplete tags.',
+        feat4Title: 'Καταγραφή Διαδρομής', feat4Desc: 'Εγγραφή GPS διαδρομών σε πραγματικό χρόνο. Live polyline, waypoints, εξαγωγή GPX και άμεσο ανέβασμα στο OSM.',
+        feat5Title: 'Σχεδιασμός Κτηρίων', feat5Desc: 'Σχεδίασε κτήρια πατώντας κόμβους στον χάρτη. 8 presets, άμεσο ανέβασμα στο OSM. Mobile-first σχεδιασμός.',
+        feat6Title: 'Σχεδιασμός Δρόμων', feat6Desc: 'Σχεδίασε δρόμους κόμβο-κόμβο. 12 τύποι highway, υποστήριξη μονόδρομου, χρώματα ανά τύπο.',
+        feat7Title: 'Καταγραφή Διευθύνσεων', feat7Desc: 'Γρήγορη καταγραφή αριθμών κατοικιών με αυτόματη ανίχνευση ονόματος δρόμου. Batch mode για γρήγορη χαρτογράφηση.',
+        feat8Title: 'Quest Mode', feat8Desc: 'StreetComplete-style quests. Βρες POIs με ελλιπή δεδομένα και απάντησε απλές ερωτήσεις για να βελτιώσεις τον χάρτη.',
+        feat9Title: 'Εγκαταστάσιμη PWA', feat9Desc: 'Πρόσθεσέ την στην αρχική οθόνη. Λειτουργεί offline με cached tiles. Εμπειρία native app.',
+        feat10Title: 'Φιλικό για Αρχάριους', feat10Desc: 'Διαδραστικός οδηγός 15 βημάτων, ενσωματωμένη αναφορά tags και δίγλωσσο περιβάλλον (EN/EL).',
         techTitle: 'Τεχνολογίες',
         footerLaunch: 'Εκκίνηση',
       }
@@ -386,8 +381,7 @@
       Object.entries(dict).forEach(([key, val]) => {
         const el = document.getElementById(key);
         if (el) {
-          if (el.tagName === 'A') el.textContent = val;
-          else el.textContent = val;
+          el.textContent = val;
         }
       });
       document.documentElement.lang = lang;

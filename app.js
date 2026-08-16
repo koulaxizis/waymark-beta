@@ -1,193 +1,287 @@
 /* =========================================================
-   WAYMARK — Core Application
-   Privacy First • No Tracking • Open Source
+   WAYMARK — Main Application
    ========================================================= */
 
-const APP_STATE = {
-  currentLayer: 'osm',
-  activeModules: {},
-  mapMarkers: [],
-  offlineMode: false
-};
+(function () {
+  'use strict';
 
-const MODULES = [
-  { id: 'nominatim',        name_key: 'module.nominatim',        icon: '🔍' },
-  { id: 'poi-viewer',        name_key: 'module.poi_viewer',        icon: '📍' },
-  { id: 'gpx-editor',        name_key: 'module.gpx_editor',        icon: '📡' },
-  { id: 'xml-generator',     name_key: 'module.xml_generator',     icon: '📝' },
-  { id: 'osm-editor',        name_key: 'module.osm_editor',        icon: '📤' },
-  { id: 'quality-checker',   name_key: 'module.quality_checker',   icon: '⚠️' },
-  { id: 'heatmap',            name_key: 'module.heatmap',            icon: '🌡️' },
-  { id: 'tags-lookup',       name_key: 'module.tags_lookup',       icon: '🏷️' },
-  { id: 'notes-browser',     name_key: 'module.notes_browser',     icon: '📋' },
-  { id: 'tutorial',          name_key: 'module.tutorial',          icon: '📖' },
-];
+  const isEl = getCurrentLang() === 'el';
 
-let map;
-const LAYERS = {};
+  // Shared app state
+  const appState = {
+    map: null,
+    mapMarkers: [],
+    activeModule: null,
+    activeModuleId: null,
+    currentTileLayer: null,
+    geolocationWatch: null,
+  };
 
-function initMap() {
-  map = L.map('map', { zoomControl: false }).setView([39.0742, 21.8243], 7);
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  // Module definitions
+  const MODULES = [
+    { id: 'nominatim', name_key: 'module.nominatim', icon: '🔍', init: () => window.initNominatim },
+    { id: 'poi-viewer', name_key: 'module.poi_viewer', icon: '📍', init: () => window.initPoiViewer },
+    { id: 'osm-editor', name_key: 'module.osm_editor', icon: '📤', init: () => window.initOsmEditor },
+    { id: 'track-recorder', name_key: 'module.track_recorder', icon: '🏃', init: () => window.initTrackRecorder },
+    { id: 'building-editor', name_key: 'module.building_editor', icon: '🏠', init: () => window.initBuildingEditor },
+    { id: 'road-editor', name_key: 'module.road_editor', icon: '🛣️', init: () => window.initRoadEditor },
+    { id: 'address-mapper', name_key: 'module.address_mapper', icon: '🏘️', init: () => window.initAddressMapper },
+    { id: 'quest-mode', name_key: 'module.quest_mode', icon: '🎯', init: () => window.initQuestMode },
+    { id: 'gpx-editor', name_key: 'module.gpx_editor', icon: '📐', init: () => window.initGpxEditor },
+    { id: 'xml-generator', name_key: 'module.xml_generator', icon: '📄', init: () => window.initXmlGenerator },
+    { id: 'quality-checker', name_key: 'module.quality_checker', icon: '✅', init: () => window.initQualityChecker },
+    { id: 'heatmap', name_key: 'module.heatmap', icon: '🔥', init: () => window.initHeatmap },
+    { id: 'tags-lookup', name_key: 'module.tags_lookup', icon: '🏷️', init: () => window.initTagsLookup },
+    { id: 'notes-browser', name_key: 'module.notes_browser', icon: '📝', init: () => window.initNotesBrowser },
+    { id: 'tutorial', name_key: 'module.tutorial', icon: '📖', init: () => window.initTutorial },
+  ];
 
-  LAYERS.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '© OpenStreetMap contributors', crossOrigin: true
-  });
-  LAYERS.dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 19, attribution: '© OSM © CARTO', subdomains: 'abcd', crossOrigin: true
-  });
-  LAYERS.satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 17, attribution: '© Esri', crossOrigin: true
-  });
-  LAYERS.topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-    maxZoom: 17, attribution: '© OpenTopoMap', crossOrigin: true
-  });
+  // =======================================================
+  // Initialization
+  // =======================================================
 
-  LAYERS.osm.addTo(map);
-  map.on('click', handleMapClick);
+  function init() {
+    initMap();
+    initLayers();
+    initModuleToggles();
+    initLayerControls();
+    initMapClickHandler();
+    registerServiceWorker();
 
-  // Ask for user location on load
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        map.setView([pos.coords.latitude, pos.coords.longitude], 14);
-      },
-      (err) => {
-        console.log('Geolocation denied or unavailable, using default location.');
-      },
-      { enableHighAccuracy: true, timeout: 5000 }
-    );
-  }
-}
-
-function updateLayerButtons(layerName) {
-  document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
-  const btn = document.querySelector(`[data-layer=${layerName}]`);
-  if (btn) btn.classList.add('active');
-}
-
-function switchLayer(name) {
-  Object.values(LAYERS).forEach(l => map.removeLayer(l));
-  LAYERS[name].addTo(map);
-  APP_STATE.currentLayer = name;
-}
-
-function handleMapClick(e) {
-  const { lat, lng } = e.latlng;
-  APP_STATE.mapMarkers.forEach(m => map.removeLayer(m));
-  APP_STATE.mapMarkers = [];
-
-  const marker = L.marker([lat, lng]).addTo(map);
-  APP_STATE.mapMarkers.push(marker);
-  marker.bindPopup(`<b>${lat.toFixed(6)}, ${lng.toFixed(6)}</b>`).openPopup();
-
-  Object.keys(APP_STATE.activeModules).forEach(id => {
-    const fn = window[`onMapClick_${id}`];
-    if (fn) fn(lat, lng, map);
-  });
-}
-
-function initModuleToggles() {
-  const list = document.getElementById('toggleList');
-  
-  // Add minimize button to panel header
-  const panelHeader = document.querySelector('.toggle-header');
-  if (panelHeader) {
-    const minBtn = document.createElement('button');
-    minBtn.className = 'toggle-minimize-btn';
-    minBtn.innerHTML = '−';
-    minBtn.title = getCurrentLang() === 'el' ? 'Ελαχιστοποίηση' : 'Minimize';
-    minBtn.addEventListener('click', () => {
-      const panel = document.querySelector('.module-toggle-panel');
-      panel.classList.toggle('minimized');
-      minBtn.innerHTML = panel.classList.contains('minimized') ? '+' : '−';
-      minBtn.title = getCurrentLang() === 'el' ? 'Μεγιστοποίηση' : 'Maximize';
-    });
-    panelHeader.appendChild(minBtn);
+    // Hide loading overlay
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+      overlay.style.opacity = '0';
+      setTimeout(() => overlay.style.display = 'none', 300);
+    }
   }
 
-  MODULES.forEach(mod => {
-    const item = document.createElement('div');
-    item.className = 'toggle-item';
-    item.innerHTML = `
-      <span class="toggle-label">${mod.icon} <span data-i18n="${mod.name_key}">${t(mod.name_key)}</span></span>
-      <label class="toggle-switch">
-        <input type="checkbox" data-module="${mod.id}">
-        <span class="slider"></span>
-      </label>`;
-    list.appendChild(item);
+  // =======================================================
+  // Map Setup
+  // =======================================================
 
-    item.querySelector('input').addEventListener('change', (ev) => {
-      toggleModule(mod, ev.target.checked);
+  function initMap() {
+    const cfg = window.WAYMARK_CONFIG || {};
+    const lat = cfg.DEFAULT_LAT || 39.0742;
+    const lon = cfg.DEFAULT_LON || 21.8243;
+    const zoom = cfg.DEFAULT_ZOOM || 7;
+
+    appState.map = L.map('map', {
+      zoomControl: false,
+      attributionControl: true,
+    }).setView([lat, lon], zoom);
+
+    // Add zoom control to bottom-left
+    L.control.zoom({ position: 'bottomleft' }).addTo(appState.map);
+
+    // Add scale
+    L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(appState.map);
+
+    // Default tile layer
+    const defaultLayer = cfg.TILE_LAYERS?.standard;
+    if (defaultLayer) {
+      appState.currentTileLayer = L.tileLayer(defaultLayer.url, {
+        attribution: defaultLayer.attribution,
+        maxZoom: defaultLayer.maxZoom,
+      }).addTo(appState.map);
+    }
+
+    appState.map.on('locationfound', (e) => {
+      L.circleMarker([e.latitude, e.longitude], {
+        radius: 8, fillColor: '#6d4aff', color: 'white', weight: 2, fillOpacity: 1
+      }).addTo(appState.map).bindPopup(isEl ? 'Εδώ είσαι!' : 'You are here!').openPopup();
     });
-  });
-}
 
-async function toggleModule(mod, enabled) {
-  const panel = document.getElementById('modulePanel');
-  const content = document.getElementById('moduleContent');
+    appState.map.on('locationerror', () => {
+      // Silent fail
+    });
+  }
 
-  if (enabled) {
-    // Disable other modules
-    MODULES.forEach(m => {
-      if (m.id !== mod.id && APP_STATE.activeModules[m.id]) {
-        APP_STATE.activeModules[m.id] = false;
-        const cb = document.querySelector(`input[data-module=${m.id}]`);
-        if (cb) cb.checked = false;
+  // =======================================================
+  // Layer Controls
+  // =======================================================
+
+  function initLayers() {
+    // Nothing special, handled by initLayerControls
+  }
+
+  function initLayerControls() {
+    const btns = document.querySelectorAll('.layer-btn');
+    btns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const layerName = btn.dataset.layer;
+        const cfg = window.WAYMARK_CONFIG || {};
+        const layerDef = cfg.TILE_LAYERS?.[layerName];
+
+        if (!layerDef) return;
+
+        // Remove current layer
+        if (appState.currentTileLayer) {
+          appState.map.removeLayer(appState.currentTileLayer);
+        }
+
+        // Add new layer
+        appState.currentTileLayer = L.tileLayer(layerDef.url, {
+          attribution: layerDef.attribution,
+          maxZoom: layerDef.maxZoom,
+        }).addTo(appState.map);
+
+        // Update active button
+        btns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+  }
+
+  // =======================================================
+  // Module Toggles
+  // =======================================================
+
+  function initModuleToggles() {
+    const container = document.getElementById('moduleToggles');
+    container.innerHTML = '';
+
+    MODULES.forEach(mod => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'module-toggle-wrapper';
+
+      const toggle = document.createElement('label');
+      toggle.className = 'module-toggle';
+      toggle.innerHTML = `
+        <input type="checkbox" data-module-id="${mod.id}">
+        <span class="module-toggle-slider"></span>
+        <span class="module-toggle-label">${mod.icon} ${t(mod.name_key)}</span>
+      `;
+
+      const checkbox = toggle.querySelector('input');
+      checkbox.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          // Uncheck all others (single active module)
+          container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            if (cb !== checkbox) cb.checked = false;
+          });
+          activateModule(mod.id);
+        } else {
+          deactivateModule(mod.id);
+        }
+      });
+
+      wrapper.appendChild(toggle);
+      container.appendChild(wrapper);
+    });
+  }
+
+  function activateModule(moduleId) {
+    // Deactivate previous module
+    if (appState.activeModuleId) {
+      deactivateModule(appState.activeModuleId);
+    }
+
+    const mod = MODULES.find(m => m.id === moduleId);
+    if (!mod) return;
+
+    const initFn = mod.init();
+    if (typeof initFn !== 'function') {
+      console.error('Module init function not found:', moduleId);
+      return;
+    }
+
+    appState.activeModuleId = moduleId;
+    appState.activeModule = mod;
+
+    // Show module panel
+    const panel = document.getElementById('activeModulePanel');
+    const title = document.getElementById('activeModuleTitle');
+    const content = document.getElementById('moduleContent');
+
+    title.textContent = mod.icon + ' ' + t(mod.name_key);
+    panel.classList.add('active');
+    content.innerHTML = '';
+
+    // Initialize module
+    initFn(appState.map, content, appState);
+  }
+
+  function deactivateModule(moduleId) {
+    // Run cleanup if exists
+    const cleanupKey = '_' + moduleId.replace(/-/g, '_') + 'Cleanup';
+    if (typeof appState[cleanupKey] === 'function') {
+      appState[cleanupKey]();
+      delete appState[cleanupKey];
+    }
+
+    if (appState.activeModuleId === moduleId) {
+      appState.activeModuleId = null;
+      appState.activeModule = null;
+
+      const panel = document.getElementById('activeModulePanel');
+      panel.classList.remove('active');
+      document.getElementById('moduleContent').innerHTML = '';
+    }
+  }
+
+  // =======================================================
+  // Map Click Handler — Routes to Active Module
+  // =======================================================
+
+  function initMapClickHandler() {
+    appState.map.on('click', (e) => {
+      if (!appState.activeModuleId) return;
+
+      // Convert module ID to the expected handler key format
+      // e.g. 'building-editor' -> 'onMapClick_buildingEditor'
+      const handlerKey = 'onMapClick_' + appState.activeModuleId
+        .split('-')
+        .map((part, i) => i === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1))
+        .join('');
+
+      if (typeof appState[handlerKey] === 'function') {
+        appState[handlerKey](e.latlng.lat, e.latlng.lng);
       }
     });
+  }
 
-    APP_STATE.activeModules[mod.id] = true;
-    panel.classList.remove('hidden');
-    content.innerHTML = '';
+  // =======================================================
+  // Close Module Button
+  // =======================================================
 
-    const initFn = 'init' + mod.id.replace(/-./g, x => x[1].toUpperCase()).replace(/^./, c => c.toUpperCase());
-    if (typeof window[initFn] === 'function') {
-      window[initFn](map, content, APP_STATE);
-    } else {
-      content.innerHTML = `<p style="color: var(--fg-muted);">${t('common.loading')}</p>`;
+  document.addEventListener('DOMContentLoaded', () => {
+    const closeBtn = document.getElementById('closeModule');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        if (appState.activeModuleId) {
+          deactivateModule(appState.activeModuleId);
+          // Uncheck toggle
+          const cb = document.querySelector(`input[data-module-id="${appState.activeModuleId}"]`);
+          if (cb) cb.checked = false;
+        }
+      });
     }
-  } else {
-    APP_STATE.activeModules[mod.id] = false;
-    panel.classList.add('hidden');
-    content.innerHTML = '';
-  }
-}
 
-function registerSW() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
-}
+    // Panel collapse buttons
+    document.getElementById('toggleModules')?.addEventListener('click', () => {
+      const body = document.getElementById('moduleToggles');
+      body.style.display = body.style.display === 'none' ? '' : 'none';
+    });
 
-function updateStatus() {
-  const dot = document.getElementById('onlineStatus');
-  const txt = document.getElementById('connectionStatus');
-  if (navigator.onLine) {
-    dot.classList.remove('offline');
-    txt.textContent = t('status.online');
-  } else {
-    dot.classList.add('offline');
-    txt.textContent = t('status.offline');
-  }
-}
+    document.getElementById('toggleLayers')?.addEventListener('click', () => {
+      const body = document.getElementById('layerControls');
+      body.style.display = body.style.display === 'none' ? '' : 'none';
+    });
 
-window.addEventListener('online', updateStatus);
-window.addEventListener('offline', updateStatus);
+    // Try geolocation
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          appState.map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+        },
+        () => {},
+        { timeout: 5000 }
+      );
+    }
 
-document.addEventListener('DOMContentLoaded', () => {
-  initMap();
-  initModuleToggles();
-  registerSW();
-  updateStatus();
-  applyTranslations();
-
-  document.getElementById('layerSelector').addEventListener('click', (e) => {
-    if (!e.target.classList.contains('layer-btn')) return;
-    updateLayerButtons(e.target.dataset.layer);
-    switchLayer(e.target.dataset.layer);
+    // Init app
+    init();
   });
-});
 
-window.APP_STATE = APP_STATE;
-window.MODULES = MODULES;
+})();

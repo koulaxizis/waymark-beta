@@ -1,9 +1,10 @@
 /* =========================================================
-   WAYMARK — OSM Editor Module
+   WAYMARK — OSM Editor Module (v2)
    - Create new POIs from map markers
    - Edit existing POIs fetched from Overpass
    - Default tags: name + type (amenity/shop/tourism)
    - Autocomplete for type field
+   - ✅ check_date quick-confirm button
    Uses OAuth 2.0 PKCE + Cloudflare Worker proxy.
    ========================================================= */
 
@@ -146,6 +147,48 @@ function initOsmEditor(map, container, appState) {
         border-radius: 4px;
         border-left: 2px solid var(--accent);
       }
+      .check-date-bar {
+        display: none;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 0.75rem;
+        margin-bottom: 0.5rem;
+        background: rgba(34, 197, 94, 0.08);
+        border: 1px solid rgba(34, 197, 94, 0.3);
+        border-radius: 4px;
+      }
+      .check-date-bar.visible {
+        display: flex;
+      }
+      .check-date-info {
+        font-size: 0.75rem;
+        color: var(--fg-muted);
+        flex: 1;
+        line-height: 1.3;
+      }
+      .check-date-info strong {
+        color: var(--success, #22c55e);
+      }
+      .check-date-btn {
+        background: #22c55e;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 0.5rem 0.8rem;
+        font-size: 0.8rem;
+        cursor: pointer;
+        font-weight: 600;
+        white-space: nowrap;
+        flex-shrink: 0;
+        transition: var(--transition);
+      }
+      .check-date-btn:hover {
+        filter: brightness(1.1);
+      }
+      .check-date-btn:disabled {
+        opacity: 0.5;
+        cursor: wait;
+      }
     </style>
 
     <h2>📤 ${t('module.osm_editor')}</h2>
@@ -159,6 +202,11 @@ function initOsmEditor(map, container, appState) {
       <div class="editing-badge" id="editingBadge">
         <span>✏️ ${isEl ? 'Επεξεργασία POI #' : 'Editing POI #'}<strong id="editingNodeId"></strong> <span id="editingNodeName"></span></span>
         <button class="cancel-edit" id="cancelEditBtn">${isEl ? 'Ακύρωση' : 'Cancel'}</button>
+      </div>
+
+      <div class="check-date-bar" id="checkDateBar">
+        <div class="check-date-info" id="checkDateInfo"></div>
+        <button class="check-date-btn" id="checkDateBtn">✅ ${isEl ? 'Επιβεβαίωση' : 'Confirm'}</button>
       </div>
 
       <div class="form-group">
@@ -207,14 +255,14 @@ function initOsmEditor(map, container, appState) {
   function renderTagRows() {
     const div = document.getElementById('osmTagRows');
     div.innerHTML = '';
-    
+
     tagRows.forEach((row, idx) => {
       const rowEl = document.createElement('div');
       rowEl.className = 'tag-row';
-      
+
       const autoCompleteId = 'autocomplete-' + idx;
       const isTypeField = row.key === 'type' || row.key === 'amenity' || row.key === 'shop' || row.key === 'tourism';
-      
+
       rowEl.innerHTML = `
         <input type="text" class="key-input" placeholder="key" value="${escapeHtml(row.key)}" data-tag-key="${idx}">
         <div style="flex:1; position:relative;">
@@ -224,17 +272,15 @@ function initOsmEditor(map, container, appState) {
         <button class="tag-del" data-tag-del="${idx}">×</button>
       `;
       div.appendChild(rowEl);
-      
-      // Key input handler
+
       const keyInput = rowEl.querySelector(`[data-tag-key="${idx}"]`);
+      const valInput = rowEl.querySelector(`[data-tag-val="${idx}"]`);
+
       keyInput.addEventListener('input', (e) => {
         const newVal = e.target.value.trim();
-        const oldVal = tagRows[idx].key;
         tagRows[idx].key = newVal;
-        
-        // If changed to type/amenity/shop/tourism, populate autocomplete
-        if (newVal === 'type' && row.value && !tagRows.find(t => t.key === 'amenity' || t.key === 'shop' || t.key === 'tourism')) {
-          // Convert type=value to proper amenity/shop/tourism=value
+
+        if (newVal === 'type' && row.value && !tagRows.find(tr => tr.key === 'amenity' || tr.key === 'shop' || tr.key === 'tourism')) {
           const typeValue = row.value;
           if (COMMON_TYPES.amenity.includes(typeValue)) {
             tagRows[idx] = { key: 'amenity', value: typeValue };
@@ -251,29 +297,27 @@ function initOsmEditor(map, container, appState) {
           }
         }
       });
-      
-      // Value input handler
-      const valInput = rowEl.querySelector(`[data-tag-val="${idx}"]`);
+
       valInput.addEventListener('input', (e) => {
         tagRows[idx].value = e.target.value;
         if (isTypeField) {
           showAutocomplete(e.target.value, autoCompleteId);
         }
       });
-      
+
       valInput.addEventListener('focus', (e) => {
         if (isTypeField) {
           showAutocomplete(e.target.value, autoCompleteId);
         }
       });
-      
-      valInput.addEventListener('blur', (e) => {
+
+      valInput.addEventListener('blur', () => {
         setTimeout(() => {
-          document.getElementById(autoCompleteId + '-dropdown').classList.remove('visible');
+          const dd = document.getElementById(autoCompleteId + '-dropdown');
+          if (dd) dd.classList.remove('visible');
         }, 150);
       });
-      
-      // Delete button handler
+
       rowEl.querySelector(`[data-tag-del="${idx}"]`).addEventListener('click', () => {
         tagRows.splice(idx, 1);
         renderTagRows();
@@ -284,15 +328,13 @@ function initOsmEditor(map, container, appState) {
   function showAutocomplete(query, dropdownId) {
     const dropdown = document.getElementById(dropdownId);
     if (!dropdown) return;
-    
-    // Find the row with this autocomplete ID
+
     const rowIdx = parseInt(dropdownId.replace('autocomplete-', '').replace('-dropdown', ''));
     if (isNaN(rowIdx)) return;
-    
+
     const keyRow = tagRows[rowIdx];
     let suggestions = [];
-    
-    // Parse the key to determine which categories to search
+
     const searchKey = keyRow.key.toLowerCase();
     if (searchKey.includes('amenity') || searchKey === 'type') {
       suggestions = suggestions.concat(COMMON_TYPES.amenity);
@@ -303,33 +345,33 @@ function initOsmEditor(map, container, appState) {
     if (searchKey.includes('tourism') || searchKey === 'type') {
       suggestions = suggestions.concat(COMMON_TYPES.tourism);
     }
-    
-    // Filter by query
+
     if (query.trim()) {
       suggestions = suggestions.filter(s => s.toLowerCase().includes(query.toLowerCase()));
     }
-    
-    // Remove duplicates and limit
+
     suggestions = [...new Set(suggestions)].slice(0, 15);
-    
+
     if (suggestions.length === 0) {
       dropdown.classList.remove('visible');
       return;
     }
-    
+
     dropdown.innerHTML = suggestions
       .map(s => `<div class="autocomplete-item" data-value="${escapeHtml(s)}">${escapeHtml(s)}</div>`)
       .join('');
-    
-    // Add click handlers
+
     dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
       item.addEventListener('click', () => {
-        valInput.value = item.dataset.value;
-        tagRows[rowIdx].value = item.dataset.value;
+        const inputs = dropdown.parentElement.querySelectorAll('input');
+        if (inputs[0]) {
+          inputs[0].value = item.dataset.value;
+          tagRows[rowIdx].value = item.dataset.value;
+        }
         dropdown.classList.remove('visible');
       });
     });
-    
+
     dropdown.classList.add('visible');
   }
 
@@ -355,19 +397,138 @@ function initOsmEditor(map, container, appState) {
     loginBtn.addEventListener('click', startOAuthLogin);
   }
 
-  // Cancel edit button
   document.getElementById('cancelEditBtn').addEventListener('click', () => {
     cancelEditMode();
+  });
+
+  // --- check_date Bar logic ---
+  const checkDateBar = document.getElementById('checkDateBar');
+  const checkDateInfo = document.getElementById('checkDateInfo');
+  const checkDateBtn = document.getElementById('checkDateBtn');
+
+  function updateCheckDateBar() {
+    if (!editingNode) {
+      checkDateBar.classList.remove('visible');
+      return;
+    }
+
+    const existing = editingNode.tags?.['check_date'];
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (existing) {
+      const existingDate = existing.slice(0, 10);
+      const daysSince = Math.floor((new Date(today) - new Date(existingDate)) / 86400000);
+
+      if (daysSince === 0) {
+        checkDateInfo.innerHTML = isEl
+          ? '<strong>✅ Ελέγχθηκε σήμερα</strong> — το tag είναι ενημερωμένο.'
+          : '<strong>✅ Checked today</strong> — tag is up to date.';
+        checkDateBtn.disabled = true;
+        checkDateBtn.textContent = '✅ ' + (isEl ? 'Ελέγχθηκε' : 'Checked');
+      } else {
+        checkDateInfo.innerHTML = isEl
+          ? `Τελευταίος έλεγχος: <strong>${escapeHtml(existing)}</strong> (${daysSince} ${isEl ? 'ημέρες πριν' : 'days ago'}). ${isEl ? 'Πάτα επιβεβαίωση για ανανέωση.' : 'Press confirm to refresh.'}`
+          : `Last checked: <strong>${escapeHtml(existing)}</strong> (${daysSince} days ago). Press confirm to refresh.`;
+        checkDateBtn.disabled = false;
+        checkDateBtn.textContent = '✅ ' + (isEl ? 'Επιβεβαίωση' : 'Confirm');
+      }
+    } else {
+      checkDateInfo.innerHTML = isEl
+        ? 'Δεν υπάρχει <code>check_date</code>. Πάτα επιβεβαίωση για να προστεθεί.'
+        : 'No <code>check_date</code> tag. Press confirm to add it.';
+      checkDateBtn.disabled = false;
+      checkDateBtn.textContent = '✅ ' + (isEl ? 'Επιβεβαίωση' : 'Confirm');
+    }
+
+    checkDateBar.classList.add('visible');
+  }
+
+  checkDateBtn.addEventListener('click', async () => {
+    if (!editingNode) return;
+
+    const cfg = window.WAYMARK_CONFIG;
+    const currentToken = sessionStorage.getItem('osm_access_token');
+    if (!currentToken) {
+      alert(t('osm.not_logged_in'));
+      return;
+    }
+
+    checkDateBtn.disabled = true;
+    checkDateBtn.textContent = '⏳ ...';
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    try {
+      const tagsObj = { ...editingNode.tags, check_date: today, source: 'Waymark' };
+
+      const changesetXml =
+        '<osm><changeset>' +
+        '<tag k="created_by" v="Waymark"/>' +
+        '<tag k="comment" v="Updated check_date via Waymark"/>' +
+        '</changeset></osm>';
+
+      const csRes = await fetch(cfg.PROXY_URL + '/api/0.6/changeset/create', {
+        method: 'PUT',
+        headers: { 'Authorization': 'Bearer ' + currentToken, 'Content-Type': 'application/xml' },
+        body: changesetXml,
+      });
+      if (!csRes.ok) throw new Error(await csRes.text());
+      const changesetId = (await csRes.text()).trim();
+
+      let oscXml = '<osmChange version="0.6" generator="Waymark">\n  <modify>\n';
+      oscXml += '    <node id="' + editingNode.id + '" version="' + editingNode.version + '" changeset="' + changesetId + '" lat="' + editingNode.lat.toFixed(7) + '" lon="' + editingNode.lon.toFixed(7) + '">\n';
+      Object.entries(tagsObj).forEach(([k, v]) => {
+        oscXml += '      <tag k="' + escapeXml(k) + '" v="' + escapeXml(v) + '"/>\n';
+      });
+      oscXml += '    </node>\n';
+      oscXml += '  </modify>\n</osmChange>';
+
+      const upRes = await fetch(cfg.PROXY_URL + '/api/0.6/changeset/' + changesetId + '/upload', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + currentToken, 'Content-Type': 'application/xml' },
+        body: oscXml,
+      });
+      if (!upRes.ok) throw new Error(await upRes.text());
+
+      await fetch(cfg.PROXY_URL + '/api/0.6/changeset/' + changesetId + '/close', {
+        method: 'PUT',
+        headers: { 'Authorization': 'Bearer ' + currentToken },
+      });
+
+      editingNode.tags['check_date'] = today;
+
+      const cdRow = tagRows.find(r => r.key === 'check_date');
+      if (cdRow) {
+        cdRow.value = today;
+      } else {
+        tagRows.push({ key: 'check_date', value: today });
+        renderTagRows();
+      }
+
+      checkDateBtn.textContent = '✅ ' + (isEl ? 'Ελέγχθηκε!' : 'Done!');
+      checkDateInfo.innerHTML = '<strong>✅ ' + (isEl ? 'Ελέγχθηκε σήμερα</strong> — Ανέβηκε στο OSM.' : 'Checked today</strong> — Uploaded to OSM.');
+
+      setTimeout(() => {
+        checkDateBtn.textContent = '✅ ' + (isEl ? 'Επιβεβαίωση' : 'Confirm');
+        checkDateBtn.disabled = true;
+        updateCheckDateBar();
+      }, 2000);
+
+    } catch (err) {
+      checkDateBtn.textContent = '✅ ' + (isEl ? 'Επιβεβαίωση' : 'Confirm');
+      checkDateBtn.disabled = false;
+      alert((isEl ? 'Σφάλμα: ' : 'Error: ') + err.message.substring(0, 150));
+    }
   });
 
   function cancelEditMode() {
     editingNode = null;
     document.getElementById('editingBadge').classList.remove('visible');
+    checkDateBar.classList.remove('visible');
     resetDefaultTags();
     const upBtn = document.getElementById('osmUploadBtn');
     if (upBtn) upBtn.textContent = t('osm.upload');
-    
-    // Deselect all markers
+
     if (poiLayer) {
       poiLayer.eachLayer(l => {
         l.setStyle({ fillColor: '#6d4aff', fillOpacity: 0.5, radius: 6 });
@@ -409,6 +570,18 @@ function initOsmEditor(map, container, appState) {
         const name = tags.name || tags['name:en'] || (isEl ? 'Χωρίς όνομα' : 'Unnamed');
         const category = tags.amenity || tags.shop || tags.tourism || '';
 
+        let badge = '';
+        if (tags.check_date) {
+          const daysSince = Math.floor((Date.now() - new Date(tags.check_date)) / 86400000);
+          if (daysSince <= 30) {
+            badge = ' <span style="color:#22c55e;font-size:0.7rem;">✓</span>';
+          } else if (daysSince <= 365) {
+            badge = ' <span style="color:#ffa040;font-size:0.7rem;">⚠</span>';
+          } else {
+            badge = ' <span style="color:#ef4444;font-size:0.7rem;">⏰</span>';
+          }
+        }
+
         const marker = L.circleMarker([node.lat, node.lon], {
           radius: 6,
           fillColor: '#6d4aff',
@@ -420,7 +593,7 @@ function initOsmEditor(map, container, appState) {
 
         const item = document.createElement('div');
         item.className = 'result-item';
-        item.innerHTML = '<strong>' + name + '</strong><br><small>' + category + ' · #' + node.id + '</small>';
+        item.innerHTML = '<strong>' + name + '</strong>' + badge + '<br><small>' + category + ' · #' + node.id + '</small>';
         item.addEventListener('click', () => selectPOIForEditing(node, marker));
         listDiv.appendChild(item);
       });
@@ -436,7 +609,6 @@ function initOsmEditor(map, container, appState) {
   function selectPOIForEditing(node, marker) {
     editingNode = node;
 
-    // Show editing badge
     const badge = document.getElementById('editingBadge');
     const badgeId = document.getElementById('editingNodeId');
     const badgeName = document.getElementById('editingNodeName');
@@ -444,21 +616,17 @@ function initOsmEditor(map, container, appState) {
     badgeId.textContent = node.id;
     badgeName.textContent = ' — ' + (node.tags?.name || '');
 
-    // Load tags from the node into tagRows
     tagRows = Object.entries(node.tags || {}).map(([k, v]) => ({ key: k, value: v }));
-    // Ensure we always have name + type first
     if (!tagRows.find(r => r.key === 'name')) {
       tagRows.unshift({ key: 'name', value: '' });
     }
     renderTagRows();
 
-    // Update upload button text
     const uploadBtn = document.getElementById('osmUploadBtn');
     if (uploadBtn) {
       uploadBtn.textContent = isEl ? '💾 Αποθήκευση αλλαγών' : '💾 Save changes';
     }
 
-    // Highlight the selected marker
     if (poiLayer) {
       poiLayer.eachLayer(l => {
         l.setStyle({ fillColor: '#6d4aff', fillOpacity: 0.5, radius: 6 });
@@ -472,6 +640,8 @@ function initOsmEditor(map, container, appState) {
       '<small>Version: ' + node.version + ' · ID: ' + node.id + '</small><br>' +
       '<small>' + node.lat.toFixed(6) + ', ' + node.lon.toFixed(6) + '</small>'
     ).openPopup();
+
+    updateCheckDateBar();
   }
 
   // --- Upload (Create or Modify) ---
@@ -497,7 +667,6 @@ function initOsmEditor(map, container, appState) {
       const validTags = tagRows.filter(tr => tr.key && tr.value);
 
       try {
-        // Step 1: Create changeset
         const changesetXml =
           '<osm><changeset>' +
           '<tag k="created_by" v="Waymark"/>' +
@@ -520,7 +689,6 @@ function initOsmEditor(map, container, appState) {
         let oscXml;
 
         if (editingNode) {
-          // --- EDIT MODE ---
           if (!editingNode.version) {
             throw new Error(isEl ? 'Δεν βρέθηκε version του node.' : 'Node version not found.');
           }
@@ -535,7 +703,6 @@ function initOsmEditor(map, container, appState) {
           oscXml += '  </modify>\n</osmChange>';
 
         } else {
-          // --- CREATE MODE ---
           if (appState.mapMarkers.length === 0) {
             alert(t('osm.no_points'));
             return;
@@ -555,7 +722,6 @@ function initOsmEditor(map, container, appState) {
           oscXml += '  </create>\n  <modify/>\n  <delete/>\n</osmChange>';
         }
 
-        // Step 2: Upload changes
         const uploadResponse = await fetch(cfg.PROXY_URL + '/api/0.6/changeset/' + changesetId + '/upload', {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + currentToken, 'Content-Type': 'application/xml' },
@@ -567,7 +733,6 @@ function initOsmEditor(map, container, appState) {
           throw new Error('Upload failed: ' + uploadResponse.status + ' ' + errText);
         }
 
-        // Step 3: Close changeset
         const closeResponse = await fetch(cfg.PROXY_URL + '/api/0.6/changeset/' + changesetId + '/close', {
           method: 'PUT',
           headers: { 'Authorization': 'Bearer ' + currentToken },
@@ -690,7 +855,7 @@ async function safeOverpassFetch(query, isEl) {
 
 function escapeXml(str) {
   if (!str) return '';
-  return str.replace(/[<>&'"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;',"":"'&quot;",'"':"&#39;" }[c]));
+  return str.replace(/[<>&'"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;',"'":"&apos;",'"':'&quot;' }[c]));
 }
 
 function downloadFile(content, filename, mimeType) {
@@ -725,7 +890,7 @@ function startOAuthLogin() {
       client_id: cfg.OSM_CLIENT_ID,
       redirect_uri: cfg.REDIRECT_URI,
       response_type: 'code',
-      scope: 'read_prefs write_api',
+      scope: 'read_prefs write_api write_notes write_gpx',
       state: Date.now().toString(),
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
