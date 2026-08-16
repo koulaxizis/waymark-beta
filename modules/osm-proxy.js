@@ -1,7 +1,7 @@
 /* =========================================================
    WAYMARK — Cloudflare Worker (CORS Proxy)
-   Routes /oauth2/* to www.openstreetmap.org
-   Routes /api/* to api.openstreetmap.org
+   /oauth2/* → www.openstreetmap.org
+   /api/*    → api.openstreetmap.org
    ========================================================= */
 
 const CORS_HEADERS = {
@@ -19,13 +19,17 @@ export default {
 
     const url = new URL(request.url);
 
-    // Route OAuth requests to www.openstreetmap.org
-    // Route API requests to api.openstreetmap.org
     const targetBase = url.pathname.startsWith('/oauth2')
       ? 'https://www.openstreetmap.org'
       : 'https://api.openstreetmap.org';
 
     const targetUrl = targetBase + url.pathname + url.search;
+
+    // Read body as text — Cloudflare Workers can't reuse ReadableStream directly
+    let body = null;
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      body = await request.text();
+    }
 
     const headers = new Headers(request.headers);
     headers.set('User-Agent', 'Waymark/1.0 (+https://github.com/koulaxizis/waymark)');
@@ -33,7 +37,7 @@ export default {
     const proxyRequest = new Request(targetUrl, {
       method: request.method,
       headers: headers,
-      body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
+      body: body,
     });
 
     try {

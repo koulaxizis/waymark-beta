@@ -26,24 +26,45 @@ function initQualityChecker(map, container, appState) {
     const bounds = map.getBounds();
     const bbox = bounds.getSouth() + ',' + bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast();
 
+    // Each query is self-contained with its own out statement
     const queries = [
-      { label: isEl ? 'Κτήρια χωρίς name' : 'Buildings without name', q: 'way["building"](bbox);way["building"]["!name"](bbox);' },
-      { label: isEl ? 'Δρόμοι χωρίς name' : 'Roads without name', q: 'way["highway"]["!name"](bbox);' },
-      { label: isEl ? 'POIs χωρίς source' : 'POIs without source', q: 'node["amenity"]["!source"](bbox);' },
+      {
+        label: isEl ? 'Κτήρια χωρίς name' : 'Buildings without name',
+        q: '[out:json][timeout:25];way["building"](' + bbox + ');way(if:t["name"]=="")(' + bbox + ');out body center;'
+      },
+      {
+        label: isEl ? 'Δρόμοι χωρίς name' : 'Roads without name',
+        q: '[out:json][timeout:25];way["highway"]["highway"!~"footway|path|service|track|cycleway"](' + bbox + ');way(if:t["name"]=="")(' + bbox + ');out body center;'
+      },
+      {
+        label: isEl ? 'POIs χωρίς source' : 'POIs without source',
+        q: '[out:json][timeout:25];node["amenity"](' + bbox + ');node(if:t["source"]=="")(' + bbox + ');out body center;'
+      },
     ];
 
     let allResults = [];
 
     for (const queryObj of queries) {
-      const fullQuery = '[out:json][timeout:15];' + queryObj.q.replace(/bbox/g, '(' + bbox + ')') + ';out body center;';
       try {
         const response = await fetch('https://overpass-api.de/api/interpreter', {
-          method: 'POST', body: fullQuery
+          method: 'POST',
+          body: queryObj.q
         });
+
+        if (!response.ok) {
+          const text = await response.text();
+          allResults.push({ label: queryObj.label, count: 0, error: text.substring(0, 100) });
+          continue;
+        }
+
         const data = await response.json();
         allResults.push({ label: queryObj.label, count: data.elements.length, elements: data.elements });
       } catch (err) {
-        allResults.push({ label: queryObj.label, count: 0, error: err.message });
+        let msg = err.message;
+        if (msg === 'Failed to fetch') {
+          msg = isEl ? 'Αδυναμία σύνδεσης' : 'Connection failed';
+        }
+        allResults.push({ label: queryObj.label, count: 0, error: msg });
       }
     }
 
@@ -57,7 +78,11 @@ function initQualityChecker(map, container, appState) {
       const item = document.createElement('div');
       item.className = 'result-item';
       const color = result.count > 0 ? 'var(--warning)' : 'var(--success)';
-      item.innerHTML = '<strong>' + result.label + '</strong>: <span style="color:' + color + ';">' + result.count + '</span>';
+      let html = '<strong>' + result.label + '</strong>: <span style="color:' + color + ';">' + result.count + '</span>';
+      if (result.error) {
+        html += '<br><small style="color:var(--danger);">' + result.error + '</small>';
+      }
+      item.innerHTML = html;
       resultsDiv.appendChild(item);
       totalIssues += result.count;
 

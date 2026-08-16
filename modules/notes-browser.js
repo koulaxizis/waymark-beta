@@ -1,5 +1,5 @@
 /* =========================================================
-   WAYMARK — Notes Browser Module (Overpass API)
+   WAYMARK — Notes Browser Module (OSM API)
    Views open OSM notes in the visible area.
    ========================================================= */
 
@@ -36,6 +36,20 @@ function initNotesBrowser(map, container, appState) {
 
     try {
       const response = await fetch(url);
+
+      // Check if response is OK before parsing
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text.substring(0, 150));
+      }
+
+      // Verify content-type is JSON
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(text.substring(0, 150));
+      }
+
       const data = await response.json();
 
       if (notesLayer) { map.removeLayer(notesLayer); notesLayer = null; }
@@ -72,7 +86,7 @@ function initNotesBrowser(map, container, appState) {
         marker.bindPopup(
           '<b>' + (isEl ? 'Σημείωση' : 'Note') + ' #' + id + '</b><br>' +
           '<small>' + status + ' — ' + date + '</small><br>' +
-          '<p style="margin-top:0.5rem;">' + body.substring(0, 200) + '</p>'
+          '<p style="margin-top:0.5rem;">' + (body ? body.substring(0, 200) : '') + '</p>'
         );
 
         notesLayer.addLayer(marker);
@@ -87,14 +101,20 @@ function initNotesBrowser(map, container, appState) {
         const coords = note.geometry.coordinates;
         const firstComment = note.properties.comments && note.properties.comments[0];
         const body = firstComment ? firstComment.body : '';
-        item.innerHTML = '<strong>#' + note.properties.id + '</strong><br><small>' + body.substring(0, 80) + '...</small>';
+        item.innerHTML = '<strong>#' + note.properties.id + '</strong><br><small>' + (body ? body.substring(0, 80) : '') + '...</small>';
         item.addEventListener('click', () => {
           map.setView([coords[1], coords[0]], 16);
         });
         resultsDiv.appendChild(item);
       });
     } catch (err) {
-      resultsDiv.innerHTML = '<div class="result-item">' + t('common.error') + ': ' + err.message + '</div>';
+      let msg = err.message;
+      if (msg === 'Failed to fetch') {
+        msg = isEl
+          ? 'Αδυναμία σύνδεσης με τον server. Έλεγξε τη σύνδεσή σου.'
+          : 'Cannot connect to server. Check your connection.';
+      }
+      resultsDiv.innerHTML = '<div class="result-item">' + t('common.error') + ': ' + msg + '</div>';
     }
   });
 

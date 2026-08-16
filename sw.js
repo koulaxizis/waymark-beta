@@ -1,10 +1,11 @@
 /* =========================================================
    WAYMARK — Service Worker
    Caches app shell + map tiles for offline use
+   Does NOT intercept API calls — they go direct.
    ========================================================= */
 
 const CACHE_NAME = 'waymark-v1';
-const OFFLINE_FALLBACK = '/offline.html';
+const OFFLINE_FALLBACK = './offline.html';
 
 const STATIC_ASSETS = [
   './',
@@ -76,20 +77,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // API calls — Network First (proxy + OSM APIs)
+  // Skip SW for all API calls — let browser handle directly
+  // (Overpass, Nominatim, OSM API, Cloudflare Worker)
   if (url.hostname.includes('overpass-api.de') ||
+      url.hostname.includes('overpass.kumi.systems') ||
       url.hostname.includes('nominatim.openstreetmap.org') ||
       url.hostname.includes('api.openstreetmap.org') ||
+      url.hostname.includes('www.openstreetmap.org') ||
       url.hostname.includes('workers.dev')) {
-    event.respondWith(
-      fetch(event.request).then((response) => response).catch(() => {
-        return caches.match(OFFLINE_FALLBACK);
-      })
-    );
-    return;
+    return; // Don't intercept — browser handles natively
   }
 
-  // Everything else — Stale While Revalidate
+  // Everything else (app shell) — Stale While Revalidate
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const fetchPromise = fetch(event.request).then((response) => {
