@@ -103,6 +103,36 @@ body {
   background: var(--danger);
 }
 
+/* ---------- Theme Toggle (also used for lang + tutorial buttons) ---------- */
+.theme-toggle {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  transition: var(--transition);
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.theme-toggle:active {
+  transform: scale(0.95);
+}
+
+[data-theme="dark"] .icon-sun { display: inline; }
+[data-theme="dark"] .icon-moon { display: none; }
+[data-theme="light"] .icon-sun { display: none; }
+[data-theme="light"] .icon-moon { display: inline; }
+
 /* ---------- Map Container ---------- */
 .map-container {
   flex: 1;
@@ -180,11 +210,11 @@ body {
   border-color: var(--border) !important;
 }
 
-/* ---------- Layer Selector ---------- */
+/* ---------- Layer Selector — TOP RIGHT ---------- */
 .layer-selector {
   position: absolute;
   top: 0.75rem;
-  left: 0.75rem;
+  right: 0.75rem;
   z-index: 500;
   display: flex;
   gap: 0.25rem;
@@ -217,11 +247,11 @@ body {
   color: white;
 }
 
-/* ---------- Module Toggle Panel (Upper Right) ---------- */
+/* ---------- Module Toggle Panel — TOP LEFT ---------- */
 .module-toggle-panel {
   position: absolute;
   top: 0.75rem;
-  right: 0.75rem;
+  left: 0.75rem;
   z-index: 500;
   width: 240px;
   max-height: calc(100vh - 160px);
@@ -238,8 +268,9 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 0.75rem 0.5rem;
+  padding: 0.75rem 2rem 0.5rem 0.75rem;
   border-bottom: 1px solid var(--border);
+  position: relative;
 }
 
 .toggle-header h3 {
@@ -328,7 +359,7 @@ body {
   background: white;
 }
 
-/* ---------- Minimize Button for Module Toggle Panel ---------- */
+/* ---------- Module Toggle Panel — Minimize Button ---------- */
 .toggle-minimize-btn {
   position: absolute;
   top: 0.5rem;
@@ -354,23 +385,34 @@ body {
   color: var(--accent);
 }
 
+/* ---------- Module Toggle Panel — Minimized State ---------- */
 .module-toggle-panel.minimized {
   width: 44px !important;
+  overflow: hidden;
 }
 
-.module-toggle-panel.minimized .toggle-header h3,
+.module-toggle-panel.minimized .toggle-header h3 {
+  display: none;
+}
+
 .module-toggle-panel.minimized .toggle-list {
   display: none;
 }
 
+.module-toggle-panel.minimized .toggle-header {
+  padding: 0;
+  border-bottom: none;
+  height: 44px;
+}
+
 .module-toggle-panel.minimized .toggle-minimize-btn {
-  top: 0.35rem;
+  top: 0.5rem;
   left: 50%;
   right: auto;
   transform: translateX(-50%);
 }
 
-/* ---------- Module Panel (Active Module Content - Lower Right) ---------- */
+/* ---------- Module Panel (Active Module Content — BOTTOM RIGHT) ---------- */
 .module-panel {
   position: absolute;
   bottom: 0.75rem;
@@ -688,11 +730,22 @@ body {
     display: none;
   }
 
+  .layer-selector {
+    top: 0.5rem;
+    right: 0.5rem;
+    padding: 0.2rem;
+  }
+
+  .layer-btn {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
   .module-toggle-panel {
     width: 200px;
     max-height: calc(100vh - 140px);
     top: 0.5rem;
-    right: 0.5rem;
+    left: 0.5rem;
   }
 
   .module-toggle-panel.minimized {
@@ -704,17 +757,6 @@ body {
     right: 0.5rem;
     bottom: 0.5rem;
     max-height: 50vh;
-  }
-
-  .layer-selector {
-    top: 0.5rem;
-    left: 0.5rem;
-    padding: 0.2rem;
-  }
-
-  .layer-btn {
-    padding: 0.3rem 0.5rem;
-    font-size: 0.7rem;
   }
 
   .footer {
