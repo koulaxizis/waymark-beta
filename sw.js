@@ -1,11 +1,8 @@
 /* =========================================================
    WAYMARK — Service Worker
-   Caches app shell + map tiles for offline use
-   Does NOT intercept API calls — they go direct.
    ========================================================= */
 
-const CACHE_NAME = 'waymark-v1';
-const OFFLINE_FALLBACK = './offline.html';
+const CACHE_NAME = 'waymark-v2';
 
 const STATIC_ASSETS = [
   './',
@@ -36,20 +33,16 @@ const STATIC_ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
-      );
-    })
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    )
   );
   self.clients.claim();
 });
@@ -57,49 +50,57 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
+  // Only handle GET requests
+  if (event.request.method !== 'GET') return;
+
+  // Skip ALL API calls — browser handles directly
+  if (url.hostname.includes('overpass') ||
+      url.hostname.includes('nominatim') ||
+      url.hostname.includes('openstreetmap') ||
+      url.hostname.includes('workers.dev')) {
+    return;
+  }
+
   // Map tiles — Cache First
-  if (url.hostname.includes('tile.openstreetmap.org') ||
-      url.hostname.includes('basemaps.cartocdn.com') ||
-      url.hostname.includes('arcgisonline.com') ||
-      url.hostname.includes('opentopomap.org')) {
+  if (url.hostname.includes('tile.openstreetmap') ||
+      url.hostname.includes('cartocdn') ||
+      url.hostname.includes('arcgisonline') ||
+      url.hostname.includes('opentopomap')) {
+
     event.respondWith(
       caches.match(event.request).then((cached) => {
         if (cached) return cached;
+
         return fetch(event.request).then((response) => {
+          // Clone IMMEDIATELY before any async operations
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, clone);
           });
           return response;
-        }).catch(() => cached);
+        }).catch(() => {
+          return caches.match(event.request);
+        });
       })
     );
     return;
   }
 
-  // Skip SW for all API calls — let browser handle directly
-  // (Overpass, Nominatim, OSM API, Cloudflare Worker)
-  if (url.hostname.includes('overpass-api.de') ||
-      url.hostname.includes('overpass.kumi.systems') ||
-      url.hostname.includes('nominatim.openstreetmap.org') ||
-      url.hostname.includes('api.openstreetmap.org') ||
-      url.hostname.includes('www.openstreetmap.org') ||
-      url.hostname.includes('workers.dev')) {
-    return; // Don't intercept — browser handles natively
-  }
-
-  // Everything else (app shell) — Stale While Revalidate
+  // Static assets — Stale While Revalidate
   event.respondWith(
     caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request).then((response) => {
+      const networkFetch = fetch(event.request).then((response) => {
         if (response.ok) {
+          // Clone IMMEDIATELY before returning
+          const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, response.clone());
+            cache.put(event.request, clone);
           });
         }
         return response;
       }).catch(() => cached);
-      return cached || fetchPromise;
+
+      return cached || networkFetch;
     })
   );
 });

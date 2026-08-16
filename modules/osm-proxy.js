@@ -25,13 +25,17 @@ export default {
 
     const targetUrl = targetBase + url.pathname + url.search;
 
-    // Read body as text — Cloudflare Workers can't reuse ReadableStream directly
+    // Read body synchronously
     let body = null;
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       body = await request.text();
     }
 
+    // Clean headers — remove ones that confuse OSM
     const headers = new Headers(request.headers);
+    headers.delete('Host');
+    headers.delete('Origin');
+    headers.delete('Referer');
     headers.set('User-Agent', 'Waymark/1.0 (+https://github.com/koulaxizis/waymark)');
 
     const proxyRequest = new Request(targetUrl, {
