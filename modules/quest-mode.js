@@ -1,394 +1,320 @@
 /* =========================================================
    WAYMARK — Quest Mode Module
-   StreetComplete-style quests for missing OSM data.
-   Fix #14: Search returns error — fixed Overpass query.
+   Gamified mapping missions with Overpass API queries.
    ========================================================= */
 
-let questState = {
-  quests: [],
-  currentQuestIdx: 0,
-  questMarkers: [],
-  activeQuests: [],
+let questModeState = {
+  currentQuest: null,
+  completedQuests: [],
+  activeMarkers: [],
 };
 
-const QUEST_TYPES = {
-  missing_name: {
-    icon: '🏷️',
-    title: { el: 'Λείπει το όνομα', en: 'Missing name' },
-    query: 'nwr[!"name"]["amenity"](bbox);',
-    tagKey: 'name',
-    tagLabel: { el: 'Όνομα', en: 'Name' },
-    inputType: 'text',
+const QUEST_TEMPLATES = [
+  {
+    id: 'missing_name_highway',
+    icon: '🛣️',
+    title_el: 'Ονόματα Δρόμων',
+    title_en: 'Street Names',
+    description_el: 'Βρες δρόμους χωρίς όνομα και πρόσθεσε τα ονόματά τους.',
+    description_en: 'Find roads without names and add their street names.',
+    overpassQuery: (bbox) => `
+[out:json][timeout:25];
+(
+  way["highway"]["name"!~".+"]["name"!~"."](bbox);
+);
+out body center limit 50;
+`.trim(),
+    answerLabel_el: 'Όνομα δρόμου:',
+    answerLabel_en: 'Street name:',
+    tagName: 'name',
+    checkTag: 'name',
   },
-  missing_phone: {
-    icon: '📞',
-    title: { el: 'Λείπει τηλέφωνο', en: 'Missing phone' },
-    query: 'nwr["amenity"][!"phone"]["phone"!~"."](bbox);',
-    tagKey: 'phone',
-    tagLabel: { el: 'Τηλέφωνο', en: 'Phone' },
-    inputType: 'tel',
+  {
+    id: 'missing_addr',
+    icon: '🏠',
+    title_el: 'Διευθύνσεις',
+    title_en: 'Addresses',
+    description_el: 'Βρες κτήρια χωρίς διεύθυνση και πρόσθεσε αριθμούς οδών.',
+    description_en: 'Find buildings without addresses and add house numbers.',
+    overpassQuery: (bbox) => `
+[out:json][timeout:25];
+(
+  way["building"]["addr:street"!~".+"]["addr:housenumber"!~"."](bbox);
+  way["building"]["addr:housenumber"!~"."](bbox);
+);
+out body center limit 50;
+`.trim(),
+    answerLabel_el: 'Αριθμός οδού:',
+    answerLabel_en: 'House number:',
+    tagName: 'addr:housenumber',
+    checkTag: 'addr:housenumber',
   },
-  missing_website: {
-    icon: '🌐',
-    title: { el: 'Λείπει website', en: 'Missing website' },
-    query: 'nwr["amenity"][!"website"]["website"!~"."]["contact:website"!~"."](bbox);',
-    tagKey: 'website',
-    tagLabel: { el: 'Website', en: 'Website' },
-    inputType: 'url',
+  {
+    id: 'missing_shop_type',
+    icon: '🏪',
+    title_el: 'Είδη Καταστημάτων',
+    title_en: 'Shop Types',
+    description_el: 'Βρες καταστήματα χωρίς συγκεκριμένο είδος (shop=*).',
+    description_en: 'Find shops without specific shop type.',
+    overpassQuery: (bbox) => `
+[out:json][timeout:25];
+(
+  node["shop"!~".+"]["shop"](bbox);
+  way["shop"!~".+"]["shop"](bbox);
+);
+out body center limit 50;
+`.trim(),
+    answerLabel_el: 'Είδος κατάστημα:',
+    answerLabel_en: 'Shop type:',
+    tagName: 'shop',
+    checkTag: 'shop',
   },
-  missing_opening_hours: {
-    icon: '🕐',
-    title: { el: 'Λείπει ωράριο', en: 'Missing opening hours' },
-    query: 'nwr["amenity"][!"opening_hours"]["opening_hours"!~"."](bbox);',
-    tagKey: 'opening_hours',
-    tagLabel: { el: 'Ωράριο λειτουργίας', en: 'Opening hours' },
-    inputType: 'text',
-  },
-  missing_wheelchair: {
-    icon: '♿',
-    title: { el: 'Λείπει προσβασιμότητα', en: 'Missing wheelchair info' },
-    query: 'nwr["amenity"][!"wheelchair"](bbox);',
-    tagKey: 'wheelchair',
-    tagLabel: { el: 'Προσβασιμότητα', en: 'Wheelchair access' },
-    inputType: 'select',
-    options: ['yes', 'no', 'limited'],
-  },
-};
+];
 
 function initQuestMode(map, container, appState) {
-  const isEl = getCurrentLang() === 'el';
+  renderQuestUI(container);
+  startRandomQuest(map, appState);
+}
 
-  questState = {
-    quests: [],
-    currentQuestIdx: 0,
-    questMarkers: [],
-    activeQuests: [],
-  };
+function renderQuestUI(container) {
+  const isEl = getCurrentLang() === 'el';
 
   container.innerHTML = `
-    <div class="module-form">
-      <p style="font-size: 0.82rem; color: var(--fg-muted); margin-bottom: 0.75rem;">
-        ${isEl
-          ? 'Βρες POIs με ελλιπή δεδομένα και συμπλήρωσε τις ερωτήσεις.streetComplete-style!'
-          : 'Find POIs with incomplete data and fill in the gaps. StreetComplete-style!'}
-      </p>
-
-      <div class="form-group">
-        <label>${isEl ? 'Τύπος Quest' : 'Quest Type'}</label>
-        <select id="questTypeSelect">
-          ${Object.entries(QUEST_TYPES).map(([key, q]) =>
-            `<option value="${key}">${q.icon} ${isEl ? q.title.el : q.title.en}</option>`
-          ).join('')}
-        </select>
+    <div class="quest-mode-ui">
+      <div id="questProgress" class="note-description">
+        ${isEl ? 'Ξεκίνα μια αποστολή!' : 'Start a quest!'}
       </div>
 
-      <button class="btn btn-success" id="searchQuestsBtn">${isEl ? '🔍 Αναζήτηση' : '🔍 Search'}</button>
+      <h3>${isEl ? 'Διαθέσιμες Αποστολές' : 'Available Quests'}</h3>
+      <div id="questList" class="results-list"></div>
 
-      <div id="questResults" style="margin-top: 0.75rem;"></div>
-
-      <div id="questActiveContainer" style="display: none;"></div>
-    </div>
-  `;
-
-  window.appStateRef = window.appStateRef || {};
-  window.appStateRef.map = map;
-
-  document.getElementById('searchQuestsBtn').addEventListener('click', () => {
-    const questType = document.getElementById('questTypeSelect').value;
-    searchQuests(map, questType, appState);
-  });
-}
-
-// Fix #14: Properly formatted Overpass query with bbox expansion
-async function searchQuests(map, questType, appState) {
-  const isEl = getCurrentLang() === 'el';
-  const resultsDiv = document.getElementById('questResults');
-
-  // Show loading
-  resultsDiv.innerHTML = `<div class="spinner"></div><p style="text-align:center;margin-top:0.5rem;font-size:0.8rem;color:var(--fg-muted);">${isEl ? 'Αναζήτηση...' : 'Searching...'}</p>`;
-
-  // Clear previous markers
-  questState.questMarkers.forEach(m => map.removeLayer(m));
-  questState.questMarkers = [];
-  questState.activeQuests = [];
-
-  const qTypeDef = QUEST_TYPES[questType];
-  if (!qTypeDef) return;
-
-  const bounds = map.getBounds();
-  const sw = bounds.getSouthWest();
-  const ne = bounds.getNorthEast();
-  const bbox = `${sw.lat},${sw.lon},${ne.lat},${ne.lon}`;
-
-  // Fix #14: Proper Overpass query format
-  const query = `[out:json][timeout:25];
-(
-  ${qTypeDef.query.replace('bbox', bbox)}
-);
-out body center 50;`;
-
-  try {
-    const response = await fetch(WAYMARK_CONFIG.OVERPASS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'data=' + encodeURIComponent(query),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Overpass HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (!data.elements || data.elements.length === 0) {
-      resultsDiv.innerHTML = `<p style="text-align:center;font-size:0.85rem;color:var(--fg-muted);">${isEl ? '🎉 Δεν βρέθηκαν quests σε αυτή την περιοχή!' : '🎉 No quests found in this area!'}</p>`;
-      return;
-    }
-
-    // Process results
-    data.elements.forEach(el => {
-      const lat = el.lat || el.center?.lat;
-      const lon = el.lon || el.center?.lon;
-      if (!lat || !lon) return;
-
-      const quest = {
-        element: el,
-        type: questType,
-        tagKey: qTypeDef.tagKey,
-        tagLabel: isEl ? qTypeDef.tagLabel.el : qTypeDef.tagLabel.en,
-        inputType: qTypeDef.inputType,
-        options: qTypeDef.options,
-      };
-
-      questState.activeQuests.push(quest);
-
-      const marker = L.circleMarker([lat, lon], {
-        radius: 10,
-        fillColor: '#ffb143',
-        color: 'white',
-        weight: 2,
-        fillOpacity: 0.8,
-      }).addTo(map);
-
-      marker.on('click', () => {
-        showQuestUI(quest, map, appState);
-      });
-
-      const name = el.tags?.name || el.tags?.['addr:street'] || `#${el.id}`;
-      const tagInfo = getMainTagInfo(el.tags);
-
-      marker.bindPopup(`
-        <div style="min-width: 180px;">
-          <strong>${escapeHtml(name)}</strong><br>
-          <small style="color: var(--fg-muted)">${tagInfo}</small><br>
-          <small>${qTypeDef.icon} ${isEl ? qTypeDef.title.el : qTypeDef.title.en}</small>
-        </div>
-      `);
-
-      questState.questMarkers.push(marker);
-    });
-
-    // Show results list
-    resultsDiv.innerHTML = `
-      <p style="font-size: 0.82rem; color: var(--success); margin-bottom: 0.5rem;">
-        ✅ ${isEl ? `Βρέθηκαν ${questState.activeQuests.length} quests` : `Found ${questState.activeQuests.length} quests`}
-      </p>
-      <div class="results-list" style="max-height: 250px;">
-        ${questState.activeQuests.map((q, idx) => {
-          const el = q.element;
-          const name = el.tags?.name || el.tags?.['addr:street'] || `#${el.id}`;
-          const tagInfo = getMainTagInfo(el.tags);
-          return `
-            <div class="result-item" onclick="window.selectQuest(${idx})">
-              <strong>${qTypeDef.icon} ${escapeHtml(name)}</strong>
-              <small>${tagInfo}</small>
-            </div>
-          `;
-        }).join('')}
-      </div>
-    `;
-
-  } catch (err) {
-    console.error('Quest search error:', err);
-    resultsDiv.innerHTML = `
-      <p style="font-size: 0.82rem; color: var(--danger); text-align: center;">
-        ${isEl ? '❌ Σφάλμα αναζήτησης. Δοκίμασε ξανά.' : '❌ Search error. Try again.'}
-      </p>
-      <p style="font-size: 0.75rem; color: var(--fg-muted); text-align: center;">
-        ${escapeHtml(err.message)}
-      </p>
-    `;
-  }
-}
-
-function getMainTagInfo(tags) {
-  if (!tags) return 'Unknown';
-  const priority = ['amenity', 'shop', 'tourism', 'leisure', 'highway', 'building', 'natural'];
-  for (const key of priority) {
-    if (tags[key]) return `${key}: ${tags[key]}`;
-  }
-  const firstKey = Object.keys(tags)[0];
-  return firstKey ? `${firstKey}: ${tags[firstKey]}` : 'Unknown';
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
-// Show quest UI when a quest is selected
-function showQuestUI(quest, map, appState) {
-  const isEl = getCurrentLang() === 'el';
-  const el = quest.element;
-  const lat = el.lat || el.center?.lat;
-  const lon = el.lon || el.center?.lon;
-
-  // Center map on quest
-  map.setView([lat, lon], Math.max(map.getZoom(), 16));
-
-  const name = el.tags?.name || '(unnamed)';
-  const tagInfo = getMainTagInfo(el.tags);
-
-  const container = document.getElementById('questActiveContainer');
-  container.style.display = 'block';
-  container.innerHTML = `
-    <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem;">
-      <h3 style="font-size: 0.95rem; margin-bottom: 0.3rem;">${escapeHtml(name)}</h3>
-      <small style="color: var(--fg-muted)">${tagInfo}</small>
       <hr>
-      <p style="font-size: 0.82rem; margin-bottom: 0.5rem;">
-        ${QUEST_TYPES[quest.type].icon} ${isEl ? QUEST_TYPES[quest.type].title.el : QUEST_TYPES[quest.type].title.en}
-      </p>
-      <div class="form-group">
-        <label>${quest.tagLabel}</label>
-        ${quest.inputType === 'select'
-          ? `<select id="questAnswerInput">${quest.options.map(o => `<option value="${o}">${o}</option>`).join('')}</select>`
-          : `<input type="${quest.inputType}" id="questAnswerInput" placeholder="${quest.tagLabel}">`
-        }
+
+      <div id="activeQuest" style="display:none;">
+        <h4>${isEl ? 'Ενεργή Αποστολή' : 'Active Quest'}</h4>
+        <div id="questInfo" class="note-description"></div>
+        <button id="startQuestBtn" class="btn btn-success">${isEl ? 'Έναρξη' : 'Start'}</button>
+        <button id="skipQuestBtn" class="btn btn-secondary">${isEl ? 'Παράκαμψη' : 'Skip'}</button>
       </div>
-      <button class="btn btn-success" id="submitQuestBtn">${isEl ? '✅ Υποβολή' : '✅ Submit'}</button>
-      <button class="btn btn-secondary" id="skipQuestBtn">${isEl ? '⏭️ Παράλειψη' : '⏭️ Skip'}</button>
+
+      <div id="answerSection" style="display:none;">
+        <h4>${isEl ? 'Απάντηση' : 'Answer'}</h4>
+        <div class="form-group">
+          <label id="answerQuestionLabel"></label>
+          <input type="text" id="questAnswerInput" class="form-control"
+                 placeholder="${isEl ? 'Εισάγετε απάντηση...' : 'Enter answer...'}">
+        </div>
+        <button id="submitAnswerBtn" class="btn btn-success">${isEl ? 'Υποβολή' : 'Submit'}</button>
+      </div>
     </div>
   `;
 
-  document.getElementById('submitQuestBtn').addEventListener('click', () => {
-    const answer = document.getElementById('questAnswerInput').value.trim();
-    if (!answer) {
-      alert(isEl ? 'Συμπλήρωσε την απάντηση.' : 'Please fill in the answer.');
-      return;
+  renderQuestList();
+
+  document.getElementById('startQuestBtn').addEventListener('click', () => {
+    const quest = questModeState.currentQuest;
+    if (quest) {
+      executeQuest(map, quest);
     }
-    submitAnswer(quest, answer, map, appState);
   });
 
   document.getElementById('skipQuestBtn').addEventListener('click', () => {
-    container.innerHTML = '';
-    container.style.display = 'none';
+    hideActiveQuest();
+    startRandomQuest(map, appState);
+  });
+
+  document.getElementById('submitAnswerBtn').addEventListener('click', () => {
+    submitAnswer(map, appState);
   });
 }
 
-// Submit quest answer to OSM
-async function submitAnswer(quest, answer, map, appState) {
+function renderQuestList() {
+  const list = document.getElementById('questList');
+  list.innerHTML = '';
+
   const isEl = getCurrentLang() === 'el';
-  const token = sessionStorage.getItem('osm_access_token');
 
-  if (!token) {
-    alert(isEl
-      ? 'Πρέπει να συνδεθείς πρώτα (OSM Editor → Login).'
-      : 'You need to log in first (OSM Editor → Login).');
-    return;
-  }
+  QUEST_TEMPLATES.forEach(template => {
+    const item = document.createElement('div');
+    item.className = 'result-item';
+    item.innerHTML = `
+      <strong>${template.icon} ${isEl ? template.title_el : template.title_en}</strong>
+      <small>${isEl ? template.description_el : template.description_en}</small>
+    `;
 
-  const el = quest.element;
-  const tagKey = quest.tagKey;
+    item.addEventListener('click', () => {
+      setActiveQuest(template);
+    });
 
-  // Build OSC XML
-  const oscXml = `<?xml version="1.0" encoding="UTF-8"?>
-<osmChange version="0.6" generator="Waymark">
-  <modify>
-    <node id="${el.id}" lat="${el.lat || el.center?.lat}" lon="${el.lon || el.center?.lon}" version="${el.version || 1}">
-${Object.entries(el.tags || {}).map(([k, v]) => `      <tag k="${escapeHtml(k)}" v="${escapeHtml(v)}"/>`).join('\n')}
-      <tag k="${escapeHtml(tagKey)}" v="${escapeHtml(answer)}"/>
-    </node>
-  </modify>
-</osmChange>`;
+    list.appendChild(item);
+  });
+}
+
+function setActiveQuest(template) {
+  questModeState.currentQuest = template;
+
+  const isEl = getCurrentLang() === 'el';
+  document.getElementById('activeQuest').style.display = 'block';
+  document.getElementById('questInfo').innerHTML = `
+    <strong>${template.icon} ${isEl ? template.title_el : template.title_en}</strong><br/>
+    ${isEl ? template.description_el : template.description_en}<br/>
+    <small style="color:var(--fg-muted)">${isEl ? 'Στον χάρτη θα εμφανιστούν στόχοι για την αποστολή.' : 'Targets will appear on the map.'}</small>
+  `;
+
+  document.getElementById('startQuestBtn').disabled = !isLoggedIn();
+}
+
+function startRandomQuest(map, appState) {
+  const randomIdx = Math.floor(Math.random() * QUEST_TEMPLATES.length);
+  setActiveQuest(QUEST_TEMPLATES[randomIdx]);
+}
+
+function hideActiveQuest() {
+  document.getElementById('activeQuest').style.display = 'none';
+  document.getElementById('answerSection').style.display = 'none';
+  questModeState.currentQuest = null;
+  questModeState.activeMarkers.forEach(m => {
+    if (map) map.removeLayer(m);
+  });
+  questModeState.activeMarkers = [];
+}
+
+async function executeQuest(map, quest) {
+  const bounds = map.getBounds();
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const bboxStr = `${sw.lat},${sw.lon},${ne.lat},${ne.lon}`;
+
+  const query = quest.overpassQuery(bboxStr);
+  const isEl = getCurrentLang() === 'el';
 
   try {
-    const proxyUrl = WAYMARK_CONFIG.PROXY_URL;
+    const result = await safeOverpassFetch(query, isEl);
 
-    // Create changeset
-    const changesetXml = `<osm>
-  <changeset>
-    <tag k="created_by" v="Waymark Quest"/>
-    <tag k="comment" v="Added ${tagKey} via Waymark Quest"/>
-  </changeset>
-</osm>`;
-
-    const csRes = await fetch(proxyUrl + '/changeset/create', {
-      method: 'PUT',
-      headers: {
-        'Authorization': 'Bearer ' + token,
-        'Content-Type': 'application/xml',
-      },
-      body: changesetXml,
-    });
-
-    if (!csRes.ok) throw new Error('Changeset creation failed');
-    const csId = (await csRes.text()).trim();
-
-    // Upload
-    const upRes = await fetch(`${proxyUrl}/changeset/${csId}/upload`, {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + token,
-        'Content-Type': 'application/xml',
-      },
-      body: oscXml,
-    });
-
-    if (!upRes.ok) throw new Error('Upload failed');
-
-    // Close
-    await fetch(`${proxyUrl}/changeset/${csId}/close`, {
-      method: 'PUT',
-      headers: { 'Authorization': 'Bearer ' + token },
-    });
-
-    alert(isEl ? `✅ Επιτυχία! ${tagKey}=${answer}` : `✅ Done! ${tagKey}=${answer}`);
-
-    // Remove marker
-    const markerIdx = questState.activeQuests.indexOf(quest);
-    if (markerIdx >= 0 && questState.questMarkers[markerIdx]) {
-      map.removeLayer(questState.questMarkers[markerIdx]);
-      questState.questMarkers.splice(markerIdx, 1);
-      questState.activeQuests.splice(markerIdx, 1);
+    if (!result.elements || result.elements.length === 0) {
+      showNotification(isEl ? 'Δεν βρέθηκαν στόχοι σε αυτή την περιοχή.' : 'No targets found in this area.', 'warning');
+      return;
     }
 
-    // Hide UI
-    const container = document.getElementById('questActiveContainer');
-    container.innerHTML = '';
-    container.style.display = 'none';
+    // Clear previous markers
+    questModeState.activeMarkers.forEach(m => map.removeLayer(m));
+    questModeState.activeMarkers = [];
+
+    // Add markers for each target
+    result.elements.forEach(el => {
+      const lat = el.lat || el.center?.lat;
+      const lon = el.lon || el.center?.lon;
+
+      if (lat && lon) {
+        const marker = L.marker([lat, lon]).addTo(map);
+        const popupContent = buildQuestTargetPopup(el, quest);
+        marker.bindPopup(popupContent);
+        questModeState.activeMarkers.push(marker);
+      }
+    });
+
+    document.getElementById('answerSection').style.display = 'block';
+
+    const label = isEl ? quest.answerLabel_el : quest.answerLabel_en;
+    document.getElementById('answerQuestionLabel').textContent = label;
 
   } catch (err) {
-    console.error('Quest submit error:', err);
-    alert(isEl ? 'Σφάλμα υποβολής.' : 'Submission error.');
+    console.error('Overpass error:', err);
+    alert(isEl ? 'Σφάλμα στο Overpass API: ' + err.message : 'Overpass API error: ' + err.message);
   }
 }
 
-// Select quest from list
-window.selectQuest = function (idx) {
-  const quest = questState.activeQuests[idx];
-  if (!quest) return;
-  showQuestUI(quest, window.appStateRef?.map, null);
-};
+function buildQuestTargetPopup(el, quest) {
+  const isEl = getCurrentLang() === 'el';
+  let html = `<div style="font-size:0.85rem; max-width:200px;">`;
+  html += `<strong>${isEl ? quest.title_el : quest.title_en}</strong><br/>`;
+  html += `ID: <a href="https://openstreetmap.org/${el.type}/${el.id}" target="_blank">${el.id} ↗</a><br/>`;
+  html += `<small>${Object.entries(el.tags || {}).map(([k,v]) => `${k}:${v}`).join(', ')}</small>`;
+  html += '</div>';
+  return html;
+}
 
-// Cleanup
-window._quest_modeCleanup = function () {
-  if (window.appStateRef?.map) {
-    questState.questMarkers.forEach(m => window.appStateRef.map.removeLayer(m));
+async function submitAnswer(map, appState) {
+  const answer = document.getElementById('questAnswerInput').value.trim();
+  const quest = questModeState.currentQuest;
+
+  if (!answer) {
+    showNotification(getCurrentLang() === 'el' ? 'Πληκτρολόγησε απάντηση!' : 'Enter an answer!', 'warning');
+    return;
   }
-  questState.questMarkers = [];
-  questState.activeQuests = [];
-};
 
-window.initQuestMode = initQuestMode;
+  // Find the nearest active marker
+  if (!questModeState.activeMarkers.length) {
+    showNotification(getCurrentLang() === 'el' ? 'Δεν υπάρχουν ενεργοί στόχοι.' : 'No active targets.', 'warning');
+    return;
+  }
+
+  // Assume user clicked on a marker - find which one they want to answer for
+  // For simplicity, use the first one (should be improved with marker selection)
+  const targetMarker = questModeState.activeMarkers[0];
+
+  // Find the original element data from markers
+  const targetEl = questModeState.activeMarkers.find(m => m === targetMarker);
+
+  const oscXml = buildQuestAnswerOSC(targetEl, quest, answer);
+
+  try {
+    const result = await uploadOSC(osmEditorState.accessToken, oscXml);
+
+    if (result.success) {
+      showNotification(getCurrentLang() === 'el' ? '✅ Απάντηση αποθηκεύτηκε!' : '✅ Answer saved!', 'success');
+      questModeState.completedQuests.push(quest.id);
+
+      // Mark as complete in UI
+      document.getElementById('questProgress').textContent =
+        getCurrentLang() === 'el'
+          ? `🎉 ${questModeState.completedQuests.length} αποστολές ολοκληρώθηκαν!`
+          : `🎉 ${questModeState.completedQuests.length} quests completed!`;
+
+      // Hide answer section, show new quest option
+      document.getElementById('answerSection').style.display = 'none';
+      hideActiveQuest();
+
+      // Start new quest
+      setTimeout(() => {
+        startRandomQuest(map, appState);
+      }, 500);
+    } else {
+      showNotification(getCurrentLang() === 'el' ? '❌ Απέτυχε η αποθήκευση: ' + result.error : '❌ Save failed: ' + result.error, 'critical');
+    }
+  } catch (err) {
+    showNotification(getCurrentLang() === 'el' ? '❌ Σφάλμα: ' + err.message : '❌ Error: ' + err.message, 'critical');
+  }
+}
+
+function buildQuestAnswerOSC(el, quest, answer) {
+  const elType = el.type;
+  const latLonAttrs = el.type === 'node'
+    ? `lat="${el.lat || ''}" lon="${el.lon || ''}"`
+    : '';
+
+  const tagPairs = Object.entries(el.tags || {}).map(([k, v]) =>
+    `      <tag k="${escapeXml(k)}" v="${escapeXml(v)}"/>`
+  );
+
+  tagPairs.push(`      <tag k="${escapeXml(quest.tagName)}" v="${escapeXml(answer)}"/>`);
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<osmChange version="0.6" generator="Waymark">
+  <modify>
+    <${elType} id="${el.id}" version="${el.version || 1}" ${latLonAttrs}>
+${tagPairs.join('\n')}
+    </${elType}>
+  </modify>
+</osmChange>`;
+}
+
+function _questModeCleanup() {
+  delete window.onMapClick_questMode;
+  if (window.appState?.map) {
+    questModeState.activeMarkers.forEach(m => window.appState.map.removeLayer(m));
+  }
+  questModeState = { currentQuest: null, completedQuests: [], activeMarkers: [] };
+}
+
+window._questModeCleanup = _questModeCleanup;

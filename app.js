@@ -27,12 +27,11 @@
     { id: 'address-mapper', name_key: 'module.address_mapper', icon: '🏘️', init: () => window.initAddressMapper },
     { id: 'quest-mode', name_key: 'module.quest_mode', icon: '🎯', init: () => window.initQuestMode },
     { id: 'gpx-editor', name_key: 'module.gpx_editor', icon: '📐', init: () => window.initGpxEditor },
-    { id: 'xml-generator', name_key: 'module.xml_generator', icon: '📄', init: () => window.initXmlGenerator },
     { id: 'quality-checker', name_key: 'module.quality_checker', icon: '✅', init: () => window.initQualityChecker },
     { id: 'heatmap', name_key: 'module.heatmap', icon: '🔥', init: () => window.initHeatmap },
     { id: 'tags-lookup', name_key: 'module.tags_lookup', icon: '🏷️', init: () => window.initTagsLookup },
     { id: 'notes-browser', name_key: 'module.notes_browser', icon: '📝', init: () => window.initNotesBrowser },
-    { id: 'tutorial', name_key: 'module.tutorial', icon: '📖', init: () => window.initTutorial },
+    // Tutorial removed — accessible via header ? button
   ];
 
   // =======================================================
@@ -119,7 +118,6 @@
       appState.currentTileLayer = L.tileLayer(defaultLayer.url, {
         attribution: defaultLayer.attribution,
         maxZoom: defaultLayer.maxZoom,
-        // NO crossOrigin — removes CORS issues
       }).addTo(appState.map);
 
       appState.currentTileLayer.on('tileloaderror', (e) => {
@@ -254,6 +252,7 @@
     if (!helpBtn) return;
 
     helpBtn.addEventListener('click', () => {
+      // Check if tutorial module exists in array (in case it's added back)
       const cb = document.querySelector('input[data-module-id="tutorial"]');
       if (cb) {
         if (appState.activeModuleId) {
@@ -270,6 +269,15 @@
             window.startTutorialWalkthrough();
           }
         }, 300);
+      } else {
+        // Tutorial module not loaded, but start walkthrough anyway if function exists
+        if (typeof window.startTutorialWalkthrough === 'function') {
+          window.startTutorialWalkthrough();
+        } else {
+          alert(isEl 
+            ? 'Το tutorial δεν είναι διαθέσιμο.' 
+            : 'Tutorial not available.');
+        }
       }
     });
   }
@@ -300,7 +308,6 @@
         appState.currentTileLayer = L.tileLayer(layerDef.url, {
           attribution: layerDef.attribution,
           maxZoom: layerDef.maxZoom,
-          // NO crossOrigin
         }).addTo(appState.map);
 
         // Log tile events for debugging
@@ -496,23 +503,11 @@
       const newLang = current === 'en' ? 'el' : 'en';
       if (typeof setLanguage === 'function') {
         setLanguage(newLang);
-      } else {
-        localStorage.setItem('waymark_lang', newLang);
+        return;
       }
+      localStorage.setItem('waymark_lang', newLang);
       location.reload();
     });
-
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          if (appState.map) {
-            appState.map.setView([pos.coords.latitude, pos.coords.longitude], 14);
-          }
-        },
-        () => {},
-        { timeout: 5000 }
-      );
-    }
 
     init();
   });

@@ -1,199 +1,283 @@
 /* =========================================================
    WAYMARK — Notes Browser Module
-   View, create, and resolve OSM notes.
-   Shows note description when clicked.
+   Browse and interact with OSM Notes using Overpass API.
    ========================================================= */
 
-let notesMarkers = [];
-let nb_localMap = null;
-let nb_localAppState = null;
+let notesBrowserState = {
+  mapMarkers: [],
+  isLoading: false,
+};
 
 function initNotesBrowser(map, container, appState) {
+  renderNotesUI(container);
+  loadNotesInViewport(map);
+
+  let viewportTimer = null;
+  map.on('moveend', () => {
+    clearTimeout(viewportTimer);
+    viewportTimer = setTimeout(() => {
+      loadNotesInViewport(map);
+    }, 500);
+  });
+
+  function handleMapClick(lat, lng) {
+    const clickedNote = notesBrowserState.mapMarkers.find(n =>
+      n.lat == lat && n.lon == lng
+    );
+    if (clickedNote) {
+      showNoteDetails(clickedNote.data, map);
+    }
+  }
+
+  window.onMapClick_notesBrowser = handleMapClick;
+}
+
+function renderNotesUI(container) {
   const isEl = getCurrentLang() === 'el';
 
-  nb_localMap = map;
-  nb_localAppState = appState;
-  window.appStateRef = appState;
-
-  // Attach map click handler to appState
-  nb_localAppState.onMapClick_notesBrowser = function(lat, lng) {
-    const isEl = getCurrentLang() === 'el';
-
-    if (this.notes_createPending) {
-      const text = prompt(isEl ? 'Περιγραφή προβλήματος:' : 'Problem description:');
-      if (!text) {
-        this.notes_createPending = false;
-        return;
-      }
-
-      const proxyUrl = WAYMARK_CONFIG.PROXY_URL;
-      const token = sessionStorage.getItem('osm_access_token');
-
-      if (!token) {
-        alert(isEl
-          ? 'Πρέπει να συνδεθείς πρώτα (OSM Editor → Login).'
-          : 'You need to log in first (OSM Editor → Login).');
-        this.notes_createPending = false;
-        return;
-      }
-
-      const formData = new URLSearchParams();
-      formData.append('lat', lat);
-      formData.append('lon', lng);
-      formData.append('text', text);
-
-      fetch(proxyUrl + '/notes', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData.toString(),
-      })
-        .then(res => {
-          if (!res.ok) throw new Error('Failed to create note');
-          return res.json();
-        })
-        .then(data => {
-          alert(isEl ? '✅ Η σημείωση δημιουργήθηκε!' : '✅ Note created!');
-          fetchNotesInViewport(nb_localMap);
-        })
-        .catch(err => {
-          console.error('Create note error:', err);
-          alert(isEl ? 'Σφάλμα δημιουργίας σημείωσης.' : 'Error creating note.');
-        })
-        .finally(() => {
-          this.notes_createPending = false;
-        });
-    }
-  };
-
   container.innerHTML = `
-    <div class="module-form">
-      <button class="btn" id="fetchNotesBtn">${isEl ? '🔍 Φόρτωση Σημειώσεων' : '🔍 Load Notes'}</button>
-      <button class="btn" id="createNoteBtn">${isEl ? '➕ Νέα Σημείωση' : '➕ New Note'}</button>
+    <div class="notes-browser-ui">
+      <div class="form-group">
+        <label>${isEl ? 'Φίλτρο:' : 'Filter:'}</label>
+        <select id="notesFilter" class="form-control">
+          <option value="all">${isEl ? 'Όλες οι σημειώσεις' : 'All notes'}</option>
+          <option value="open">${isEl ? 'Ανοικτές' : 'Open'}</option>
+          <option value="closed">${isEl ? 'Κλειστές' : 'Closed'}</option>
+        </select>
+      </div>
+
+      <button id="loadNotesBtn" class="btn btn-primary">
+        🔍 ${isEl ? 'Φόρτωση Σημειώσεων' : 'Load Notes'}
+      </button>
+
+      <div id="notesStats" class="note-description" style="margin-top:0.5rem;"></div>
+      <div id="notesList" class="results-list"></div>
     </div>
   `;
 
-  document.getElementById('fetchNotesBtn').addEventListener('click', () => {
-    if (nb_localMap) {
-      fetchNotesInViewport(nb_localMap);
-    }
+  document.getElementById('notesFilter').addEventListener('change', () => {
+    loadNotesInViewport(map);
   });
 
-  document.getElementById('createNoteBtn').addEventListener('click', () => {
-    if (nb_localMap && nb_localAppState) {
-      createNewNote(nb_localMap, nb_localAppState);
-    }
+  document.getElementById('loadNotesBtn').addEventListener('click', () => {
+    loadNotesInViewport(map);
   });
 }
 
-async function fetchNotesInViewport(map) {
-  const isEl = getCurrentLang() === 'el';
-
-  notesMarkers.forEach(m => map.removeLayer(m));
-  notesMarkers = [];
+async function loadNotesInViewport(map) {
+  if (notesBrowserState.isLoading) return;
+  notesBrowserState.isLoading = true;
 
   const bounds = map.getBounds();
-  const southWest = bounds.getSouthWest();
-  const northEast = bounds.getNorthEast();
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const bboxStr = `${sw.lat},${sw.lon},${ne.lat},${ne.lon}`;
 
-  const url = `${WAYMARK_CONFIG.OSM_API_URL}/api/0.6/notes.json?bbox=${southWest.lon},${southWest.lat},${northEast.lon},${northEast.lat}&limit=100`;
+  const filter = document.getElementById('notesFilter')?.value || 'all';
+  const isEl = getCurrentLang() === 'el';
+
+  showSpinner(true);
 
   try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Notes API error');
-    const data = await response.json();
+    // Note query using Overpass API
+    // Notes are retrieved via the Nominatim/OSM Notes API, not Overpass
+    // We'll use the OSM Notes API directly via proxy
 
-    if (!data.features || data.features.length === 0) {
-      alert(isEl ? 'Δεν βρέθηκαν σημειώσεις στην περιοχή.' : 'No notes found.');
+    const cfg = window.WAYMARK_CONFIG || {};
+    const baseUrl = cfg.PROXY_URL;
+
+    // Fetch notes from OSM API via proxy
+    const apiUrl = `${baseUrl}/api/0.6/notes?bbox=${bboxStr}&limit=100&only_open=true`;
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/xml' }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const xmlText = await response.text();
+    const notes = parseNotesXML(xmlText);
+
+    // Clear existing markers
+    notesBrowserState.mapMarkers.forEach(m => map.removeLayer(m));
+    notesBrowserState.mapMarkers = [];
+
+    // Filter notes
+    let filteredNotes = notes;
+    if (filter === 'open') {
+      filteredNotes = notes.filter(n => n.status === 'open');
+    } else if (filter === 'closed') {
+      filteredNotes = notes.filter(n => n.status === 'closed');
+    }
+
+    const listEl = document.getElementById('notesList');
+    listEl.innerHTML = '';
+
+    if (filteredNotes.length === 0) {
+      listEl.innerHTML = `<p>${isEl ? 'Δεν βρέθηκαν σημειώσεις' : 'No notes found'}</p>`;
+      document.getElementById('notesStats').textContent = '';
+      showSpinner(false);
       return;
     }
 
-    data.features.forEach(note => {
-      const coords = note.geometry.coordinates;
-      const lat = coords[1];
-      const lon = coords[0];
-      const props = note.properties;
+    // Add markers and build list
+    filteredNotes.forEach(note => {
+      const marker = L.circleMarker([note.lat, note.lon], {
+        radius: 8,
+        fillColor: note.status === 'open' ? '#6d4aff' : '#22c55e',
+        color: note.status === 'open' ? '#6d4aff' : '#22c55e',
+        weight: 2,
+        fillOpacity: 0.7,
+      });
 
-      const marker = L.marker([lat, lon], {
-        icon: L.divIcon({
-          className: 'note-marker',
-          html: '📝',
-          iconSize: [28, 28],
-          iconAnchor: [14, 14],
-        })
-      }).addTo(map);
-      marker.noteData = props;
+      const popupContent = buildNotePopup(note);
+      marker.bindPopup(popupContent);
+      marker.addTo(map);
 
-      const status = getStatusText(props.status, isEl);
-      const date = props.date_created ? new Date(props.date_created).toLocaleDateString() : '';
-      
-      let commentsHtml = '';
-      if (props.comments && props.comments.length > 0) {
-        commentsHtml = props.comments.map((c, idx) => {
-          const cDate = c.date ? new Date(c.date).toLocaleDateString() : '';
-          const author = c.user || (isEl ? 'Ανώνυμος' : 'Anonymous');
-          const body = escapeHtml(c.body || c.text || '');
-          return `
-            <div style="margin-top: 0.3rem; padding: 0.4rem; background: var(--bg); border-radius: 4px; font-size: 0.78rem;">
-              <strong>${escapeHtml(author)}</strong> <small style="color: var(--fg-muted)">${cDate}</small><br>
-              ${body}
-            </div>
-          `;
-        }).join('');
-      }
+      notesBrowserState.mapMarkers.push({
+        lat: note.lat,
+        lon: note.lon,
+        data: note,
+        leaflet: marker
+      });
 
-      const popupContent = `
-        <div style="min-width: 260px;">
-          <strong>${isEl ? 'Σημείωση' : 'Note'} #${props.id}</strong><br>
-          <small style="color: var(--accent); font-weight: 600;">${status}</small><br>
-          <small style="color: var(--fg-muted)">${date}</small>
-          <hr>
-          ${commentsHtml}
-        </div>
+      const item = document.createElement('div');
+      item.className = 'result-item';
+      item.innerHTML = `
+        <strong>${note.status === 'open' ? '🔵' : '✅'} ${escapeHtml(note.comment?.substring(0, 40) || 'No description')}</strong>
+        <small>ID: ${note.id} • ${new Date(note.date).toLocaleDateString()}</small>
+        ${note.comments?.length > 0 ? `<small>• ${note.comments.length} ${isEl ? 'σχόλια' : 'comments'}</small>` : ''}
       `;
 
-      marker.bindPopup(popupContent);
-      notesMarkers.push(marker);
+      item.addEventListener('click', () => showNoteDetails(note, map));
+      listEl.appendChild(item);
     });
 
+    document.getElementById('notesStats').textContent =
+      isEl ? `Βρέθηκαν ${filteredNotes.length} σημειώσεις` : `Found ${filteredNotes.length} notes`;
+
   } catch (err) {
-    console.error('Fetch notes error:', err);
-    alert(isEl ? 'Σφάλμα κατά τη λήψη σημειώσεων.' : 'Error loading notes.');
+    console.error('Notes fetch error:', err);
+    alert(isEl ? 'Σφάλμα κατά τη φόρτωση σημειώσεων: ' + err.message : 'Error loading notes: ' + err.message);
+  } finally {
+    notesBrowserState.isLoading = false;
+    showSpinner(false);
   }
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+function parseNotesXML(xmlText) {
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+  const noteElements = xmlDoc.querySelectorAll('note');
+
+  const notes = [];
+  noteElements.forEach(elem => {
+    const note = {
+      id: elem.getAttribute('id'),
+      lat: parseFloat(elem.getAttribute('lat')),
+      lon: parseFloat(elem.getAttribute('lon')),
+      status: elem.getAttribute('status'),
+      date: elem.getAttribute('date'),
+      comments: [],
+      comment: null,
+      url: null,
+    };
+
+    const comments = elem.querySelectorAll('comment');
+    if (comments.length > 0) {
+      const lastComment = comments[comments.length - 1];
+      note.comment = lastComment.textContent;
+    }
+
+    comments.forEach(c => {
+      note.comments.push({
+        text: c.textContent,
+        date: c.getAttribute('date'),
+        action: c.getAttribute('action'),
+      });
+    });
+
+    note.url = elem.getAttribute('url');
+
+    notes.push(note);
+  });
+
+  return notes;
 }
 
-function getStatusText(status, isEl) {
-  switch (status) {
-    case 'open': return isEl ? '🟢 Ανοιχτή' : '🟢 Open';
-    case 'closed': return isEl ? '🔴 Κλειστή' : '🔴 Closed';
-    case 'hidden': return isEl ? '⚫ Κρυμμένη' : '⚫ Hidden';
-    default: return status;
-  }
-}
-
-function createNewNote(map, appState) {
+function buildNotePopup(note) {
   const isEl = getCurrentLang() === 'el';
-  alert(isEl
-    ? 'Κάνε κλικ στον χάρτη για να δημιουργήσεις σημείωση.'
-    : 'Click on map to create a note.');
-  appState.notes_createPending = true;
+  let html = `<div style="font-size:0.85rem; max-width:250px;">`;
+  html += `<strong>${note.status === 'open' ? '🔵' : '✅'} ${isEl ? 'Σημείωση #' : 'Note #'}</strong> ${note.id}<br/>`;
+  html += `<strong>📅 ${new Date(note.date).toLocaleDateString()}</strong><br/>`;
+  html += `<br/><strong>${note.comment || ''}</strong>`;
+  html += `<br/><br/><a href="${note.url}" target="_blank" style="color:var(--accent)">OSM ↗</a>`;
+  html += '</div>';
+  return html;
 }
 
-window._notes_browserCleanup = function () {
-  if (nb_localMap) {
-    notesMarkers.forEach(m => nb_localMap.removeLayer(m));
-  }
-  notesMarkers = [];
-  nb_localMap = null;
-  nb_localAppState = null;
-};
+function showNoteDetails(note, map) {
+  const isEl = getCurrentLang() === 'el';
 
-window.initNotesBrowser = initNotesBrowser;
+  const panel = document.getElementById('activeModulePanel');
+  const content = document.getElementById('moduleContent');
+
+  panel.classList.add('active');
+  document.getElementById('activeModuleTitle').textContent = '📝 ' + `#${note.id}`;
+
+  content.innerHTML = `
+    <div class="note-details">
+      <div style="margin-bottom:0.5rem;">
+        <strong>📍 ${isEl ? 'Συντεταγμένες:' : 'Coordinates:'}</strong> ${note.lat.toFixed(6)}, ${note.lon.toFixed(6)}
+      </div>
+      <div style="margin-bottom:0.5rem;">
+        <strong>📅 ${isEl ? 'Ημερομηνία:' : 'Date:'}</strong> ${new Date(note.date).toLocaleString()}
+      </div>
+      <div style="margin-bottom:0.5rem;">
+        <strong>🔄 ${isEl ? 'Κατάσταση:' : 'Status:'}</strong> ${note.status === 'open' ? '🔵 ' + (isEl ? 'Ανοικτή' : 'Open') : '✅ ' + (isEl ? 'Κλειστή' : 'Closed')}
+      </div>
+
+      <h4 style="margin:0.5rem 0;">💬 ${isEl ? 'Σχόλια' : 'Comments'} (${note.comments.length})</h4>
+      <div class="note-comments">
+        ${note.comments.map(c => `
+          <div class="note-comment">
+            <small>${new Date(c.date).toLocaleString()}</small>
+            ${c.action ? `<span style="color:var(--accent)">${c.action}</span>` : ''}
+            <p>${escapeHtml(c.text || '')}</p>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="poi-actions" style="margin-top:0.5rem;">
+        <a href="${note.url}" target="_blank" class="btn btn-sm">${isEl ? 'Ανοίξτε στο OSM' : 'Open in OSM'}</a>
+      </div>
+    </div>
+  `;
+
+  // Center map on note
+  map.setView([note.lat, note.lon], 16);
+}
+
+function showSpinner(show) {
+  const btn = document.getElementById('loadNotesBtn');
+  if (show) {
+    btn.disabled = true;
+    btn.textContent = getCurrentLang() === 'el' ? 'Φόρτωση...' : 'Loading...';
+  } else {
+    btn.disabled = false;
+    btn.textContent = getCurrentLang() === 'el' ? 'Φόρτωση Σημειώσεων' : 'Load Notes';
+  }
+}
+
+function _notesBrowserCleanup() {
+  delete window.onMapClick_notesBrowser;
+  if (window.appState?.map) {
+    notesBrowserState.mapMarkers.forEach(m => window.appState.map.removeLayer(m));
+  }
+  notesBrowserState = { mapMarkers: [], isLoading: false };
+}
+
+window._notesBrowserCleanup = _notesBrowserCleanup;

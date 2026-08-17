@@ -1,111 +1,203 @@
 /* =========================================================
-   WAYMARK — Quality Checker Module (Overpass API)
-   Finds data quality issues in the visible area.
+   WAYMARK — Quality Checker Module
+   Run validation checks on OSM data using Overpass API.
    ========================================================= */
 
+let qualityCheckerState = {
+  isLoading: false,
+  issues: [],
+};
+
 function initQualityChecker(map, container, appState) {
+  renderQualityCheckerUI(container);
+  runChecks(map);
+
+  let viewportTimer = null;
+  map.on('moveend', () => {
+    clearTimeout(viewportTimer);
+    viewportTimer = setTimeout(() => {
+      runChecks(map);
+    }, 500);
+  });
+
+  function handleMapClick(lat, lng) {
+    // Allow manual inspection of clicked elements
+    inspectElementAtLatLon(lat, lng, map);
+  }
+
+  window.onMapClick_qualityChecker = handleMapClick;
+}
+
+function renderQualityCheckerUI(container) {
   const isEl = getCurrentLang() === 'el';
 
   container.innerHTML = `
-    <h2>⚠️ ${t('module.quality_checker')}</h2>
-    <div class="module-form">
-      <p style="font-size: 0.85rem; color: var(--fg-muted);">
-        ${isEl
-          ? 'Ελέγχει την ορατή περιοχή του χάρτη για τυχόν προβλήματα ποιότητας δεδομένων.'
-          : 'Checks the visible map area for data quality issues.'}
-      </p>
-      <button class="btn" id="qcCheckBtn">${isEl ? 'Έλεγχος περιοχής' : 'Check area'}</button>
-      <div class="results-list" id="qcResults"></div>
+    <div class="quality-checker-ui">
+      <div class="form-group">
+        <label>${isEl ? 'Έλεγχος:' : 'Check:'}</label>
+        <select id="checkType" class="form-control">
+          <option value="nodes_without_tags">${isEl ? 'Nodes χωρίς tags' : 'Nodes without tags'}</option>
+          <option value="ways_without_names">${isEl ? 'Ways χωρίς names' : 'Ways without names'}</option>
+          <option value="buildings_no_address">${isEl ? 'Κτήρια χωρίς διεύθυνση' : 'Buildings without address'}</option>
+          <option value="highways_no_maxspeed">${isEl ? 'Δρόμοι χωρίς μέγιστη ταχύτητα' : 'Highways without maxspeed'}</option>
+          <option value="shops_no_opening_hours">${isEl ? 'Καταστήματα χωρίς ώρες λειτουργίας' : 'Shops without opening hours'}</option>
+        </select>
+      </div>
+
+      <button id="runChecksBtn" class="btn btn-primary">
+        🔍 ${isEl ? 'Εκτέλεση Ελέγχων' : 'Run Checks'}
+      </button>
+
+      <div id="issuesStats" class="note-description" style="margin-top:0.5rem;"></div>
+      <div id="issuesList" class="results-list"></div>
     </div>
   `;
 
-  document.getElementById('qcCheckBtn').addEventListener('click', async () => {
-    const resultsDiv = document.getElementById('qcResults');
-    resultsDiv.innerHTML = '<div class="spinner"></div>';
+  document.getElementById('checkType').addEventListener('change', () => {
+    runChecks(map);
+  });
 
-    const bounds = map.getBounds();
-    const bbox = bounds.getSouth() + ',' + bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast();
-
-    // Each query is self-contained with its own out statement
-    const queries = [
-      {
-        label: isEl ? 'Κτήρια χωρίς name' : 'Buildings without name',
-        q: '[out:json][timeout:25];way["building"](' + bbox + ');way(if:t["name"]=="")(' + bbox + ');out body center;'
-      },
-      {
-        label: isEl ? 'Δρόμοι χωρίς name' : 'Roads without name',
-        q: '[out:json][timeout:25];way["highway"]["highway"!~"footway|path|service|track|cycleway"](' + bbox + ');way(if:t["name"]=="")(' + bbox + ');out body center;'
-      },
-      {
-        label: isEl ? 'POIs χωρίς source' : 'POIs without source',
-        q: '[out:json][timeout:25];node["amenity"](' + bbox + ');node(if:t["source"]=="")(' + bbox + ');out body center;'
-      },
-    ];
-
-    let allResults = [];
-
-    for (const queryObj of queries) {
-      try {
-        const response = await fetch('https://overpass-api.de/api/interpreter', {
-          method: 'POST',
-          body: queryObj.q
-        });
-
-        if (!response.ok) {
-          const text = await response.text();
-          allResults.push({ label: queryObj.label, count: 0, error: text.substring(0, 100) });
-          continue;
-        }
-
-        const data = await response.json();
-        allResults.push({ label: queryObj.label, count: data.elements.length, elements: data.elements });
-      } catch (err) {
-        let msg = err.message;
-        if (msg === 'Failed to fetch') {
-          msg = isEl ? 'Αδυναμία σύνδεσης' : 'Connection failed';
-        }
-        allResults.push({ label: queryObj.label, count: 0, error: msg });
-      }
-    }
-
-    appState.mapMarkers.forEach(m => map.removeLayer(m));
-    appState.mapMarkers = [];
-
-    resultsDiv.innerHTML = '';
-    let totalIssues = 0;
-
-    allResults.forEach(result => {
-      const item = document.createElement('div');
-      item.className = 'result-item';
-      const color = result.count > 0 ? 'var(--warning)' : 'var(--success)';
-      let html = '<strong>' + result.label + '</strong>: <span style="color:' + color + ';">' + result.count + '</span>';
-      if (result.error) {
-        html += '<br><small style="color:var(--danger);">' + result.error + '</small>';
-      }
-      item.innerHTML = html;
-      resultsDiv.appendChild(item);
-      totalIssues += result.count;
-
-      if (result.elements) {
-        result.elements.slice(0, 50).forEach(el => {
-          const lat = el.lat || (el.center && el.center.lat);
-          const lon = el.lon || (el.center && el.center.lon);
-          if (!lat || !lon) return;
-
-          const marker = L.circleMarker([lat, lon], {
-            radius: 5, fillColor: '#ffd43b', color: '#ffd43b', fillOpacity: 0.7
-          }).addTo(map);
-          appState.mapMarkers.push(marker);
-        });
-      }
-    });
-
-    const summary = document.createElement('div');
-    summary.className = 'result-item';
-    summary.style.cssText = 'border-top: 1px solid var(--border); margin-top: 0.5rem; padding-top: 0.5rem;';
-    summary.innerHTML = '<strong>' + (isEl ? 'Συνολικά προβλήματα:' : 'Total issues:') + '</strong> ' + totalIssues;
-    resultsDiv.appendChild(summary);
+  document.getElementById('runChecksBtn').addEventListener('click', () => {
+    runChecks(map);
   });
 }
 
-window.initQualityChecker = initQualityChecker;
+async function runChecks(map) {
+  if (qualityCheckerState.isLoading) return;
+  qualityCheckerState.isLoading = true;
+
+  const checkType = document.getElementById('checkType')?.value || 'nodes_without_tags';
+  const isEl = getCurrentLang() === 'el';
+
+  showSpinner(true);
+
+  try {
+    const bounds = map.getBounds();
+    const sw = bounds.getSouthWest();
+    const ne = bounds.getNorthEast();
+    const bboxStr = `${sw.lat},${sw.lon},${ne.lat},${ne.lon}`;
+
+    const queries = {
+      nodes_without_tags: `[out:json][timeout:25];(node(${bboxStr})["!"];);out count;`.trim(),
+      ways_without_names: `[out:json][timeout:25];(way(${bboxStr})["highway"]["!name"];);out body center limit 50;`.trim(),
+      buildings_no_address: `[out:json][timeout:25];(way(${bboxStr})["building"]["!addr:housenumber"];);out body center limit 50;`.trim(),
+      highways_no_maxspeed: `[out:json][timeout:25];(way(${bboxStr})["highway"]["!maxspeed"];);out body center limit 50;`.trim(),
+      shops_no_opening_hours: `[out:json][timeout:25];(node(${bboxStr})["shop"]["!opening_hours"];);out body center limit 50;`.trim(),
+    };
+
+    const query = queries[checkType];
+
+    // Use safeOverpassFetch for failover
+    const result = await safeOverpassFetch(query, isEl);
+
+    qualityCheckerState.issues = [];
+
+    if (result.elements) {
+      qualityCheckerState.issues = result.elements;
+    }
+
+    const listEl = document.getElementById('issuesList');
+    listEl.innerHTML = '';
+
+    if (qualityCheckerState.issues.length === 0) {
+      listEl.innerHTML = `<p>${isEl ? 'Δεν βρέθηκαν προβλήματα' : 'No issues found'}</p>`;
+      document.getElementById('issuesStats').textContent = '';
+      showSpinner(false);
+      return;
+    }
+
+    // Render issues
+    qualityCheckerState.issues.forEach(issue => {
+      const item = document.createElement('div');
+      item.className = 'result-item';
+
+      let summary = '';
+      if (issue.tags) {
+        summary = Object.entries(issue.tags)
+          .map(([k, v]) => `${k}:${v}`)
+          .join(', ');
+      }
+
+      item.innerHTML = `
+        <strong>${issue.type === 'node' ? '🔴' : issue.type === 'way' ? '🟡' : '🔵'} ID: ${issue.id}</strong>
+        <small>${summary.substring(0, 60)}</small>
+      `;
+
+      item.addEventListener('click', () => {
+        const lat = issue.lat || issue.center?.lat || bounds.getCenter().lat;
+        const lon = issue.lon || issue.center?.lon || bounds.getCenter().lng;
+        map.setView([lat, lon], 17);
+        showIssueDetails(issue, lat, lon);
+      });
+
+      listEl.appendChild(item);
+    });
+
+    document.getElementById('issuesStats').textContent =
+      isEl ? `Βρέθηκαν ${qualityCheckerState.issues.length} θέματα` : `Found ${qualityCheckerState.issues.length} issues`;
+
+  } catch (err) {
+    console.error('Quality check error:', err);
+    alert(isEl ? 'Σφάλμα ελέγχου ποιότητας: ' + err.message : 'Quality check error: ' + err.message);
+  } finally {
+    qualityCheckerState.isLoading = false;
+    showSpinner(false);
+  }
+}
+
+function showIssueDetails(issue, lat, lon) {
+  const isEl = getCurrentLang() === 'el';
+
+  const panel = document.getElementById('activeModulePanel');
+  const content = document.getElementById('moduleContent');
+
+  panel.classList.add('active');
+  document.getElementById('activeModuleTitle').textContent = '⚠️ ' + (isEl ? 'Θέμα' : 'Issue') + ` #${issue.id}`;
+
+  let tagsHtml = '';
+  if (issue.tags) {
+    tagsHtml = `<table class="poi-tags-table">`;
+    tagsHtml += `<thead><tr><th>${isEl ? 'Κλειδί' : 'Key'}</th><th>${isEl ? 'Τιμή' : 'Value'}</th></tr></thead>`;
+    tagsHtml += `<tbody>`;
+    Object.entries(issue.tags).forEach(([k, v]) => {
+      tagsHtml += `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`;
+    });
+    tagsHtml += `</tbody></table>`;
+  }
+
+  content.innerHTML = `
+    <div class="issue-details">
+      <div style="margin-bottom:0.5rem;">
+        <strong>${isEl ? 'Τύπος:' : 'Type:'}</strong> ${escapeHtml(issue.type)}
+      </div>
+      <div style="margin-bottom:0.5rem;">
+        <strong>🆔 ${isEl ? 'ID:' : 'ID:'}</strong> ${issue.id} (<a href="https://openstreetmap.org/${issue.type}/${issue.id}" target="_blank">OSM ↗</a>)
+      </div>
+      <div style="margin-bottom:0.5rem;">
+        <strong>🌍 ${isEl ? 'Συντεταγμένες:' : 'Coordinates:'}</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}
+      </div>
+      ${tagsHtml}
+      <div class="poi-actions" style="margin-top:0.5rem;">
+        <a href="https://openstreetmap.org/${issue.type}/${issue.id}" target="_blank" class="btn btn-sm">${isEl ? 'Επεξεργασία στο OSM' : 'Edit in OSM'}</a>
+      </div>
+    </div>
+  `;
+}
+
+function showSpinner(show) {
+  const btn = document.getElementById('runChecksBtn');
+  if (show) {
+    btn.disabled = true;
+    btn.textContent = getCurrentLang() === 'el' ? 'Έλεγχος...' : 'Checking...';
+  } else {
+    btn.disabled = false;
+    btn.textContent = getCurrentLang() === 'el' ? 'Εκτέλεση Ελέγχων' : 'Run Checks';
+  }
+}
+
+function _qualityCheckerCleanup() {
+  delete window.onMapClick_qualityChecker;
+  qualityCheckerState = { isLoading: false, issues: [] };
+}
+
+window._qualityCheckerCleanup = _qualityCheckerCleanup;

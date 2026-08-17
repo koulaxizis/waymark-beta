@@ -1,5 +1,5 @@
 // =======================================================
-// Waymark Configuration 
+// Waymark Configuration
 // =======================================================
 
 window.WAYMARK_CONFIG = {
@@ -14,7 +14,7 @@ window.WAYMARK_CONFIG = {
   DEFAULT_LON: 21.8243,
   DEFAULT_ZOOM: 7,
 
-  // Tile layers — all use working free URLs (no API keys needed)
+  // Tile layers — only working free layers (removed Thunderforest due to API key requirement)
   TILE_LAYERS: {
     standard: {
       url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -24,16 +24,6 @@ window.WAYMARK_CONFIG = {
     satellite: {
       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-      maxZoom: 19
-    },
-    cycle: {
-      url: 'https://tile.thunderforest.com/cycle/{z}/{x}/{y}.png?apikey=6170aad10fed42a38d1d8a5eab8935fc',
-      attribution: '&copy; <a href="https://www.thunderforest.com/">Thunderforest</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19
-    },
-    transport: {
-      url: 'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=6170aad10fed42a38d1d8a5eab8935fc',
-      attribution: '&copy; <a href="https://www.thunderforest.com/">Thunderforest</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19
     },
     dark: {
@@ -51,7 +41,7 @@ window.WAYMARK_CONFIG = {
   // APIs
   NOMINATIM_URL: 'https://nominatim.openstreetmap.org/search',
   OVERPASS_URL: 'https://overpass-api.de/api/interpreter',
-  OSM_API_URL: 'https://api.openstreetmap.org',
+  OSM_API_URL: 'https://www.openstreetmap.org',
 
   // Overpass timeout
   OVERPASS_TIMEOUT: 30,

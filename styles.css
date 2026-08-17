@@ -181,7 +181,7 @@ html, body {
 
 .location-button {
   position: absolute;
-  bottom: 16px;
+  bottom: 6px;
   left: 56px;
   width: 42px;
   height: 42px;
@@ -741,7 +741,7 @@ small { font-size: 0.76rem; }
   .module-toggle-label { font-size: 0.82rem; }
 
   .location-button {
-    bottom: 14px;
+    bottom: 6px;
     left: 48px;
     width: 38px;
     height: 38px;
@@ -761,7 +761,7 @@ small { font-size: 0.76rem; }
   .control-panel.top-right { width: 115px; }
 
   .location-button {
-    bottom: 12px;
+    bottom: 6px;
     left: 44px;
     width: 34px;
     height: 34px;

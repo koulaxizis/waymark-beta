@@ -3,113 +3,127 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Waymark — OAuth Callback</title>
+  <title>Waymark OAuth Callback</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #1a1a1a;
       color: #e0e0e0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 100vh;
+      min-height: 100vh;
+      margin: 0;
     }
     .spinner {
-      width: 40px; height: 40px;
-      border: 3px solid #333;
+      width: 48px;
+      height: 48px;
+      border: 4px solid #333;
       border-top-color: #6d4aff;
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
-    p { margin-top: 1rem; opacity: 0.7; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .error { color: #ff6b6b; }
+    #message { margin-top: 1rem; color: #a0a0a0; }
   </style>
-  <!-- THIS WAS MISSING — config.js must load before the script runs -->
-  <script src="config.js"></script>
 </head>
 <body>
-  <div style="text-align: center;">
-    <div class="spinner" id="spinner"></div>
-    <p id="message">Completing login...</p>
-  </div>
+  <div class="spinner"></div>
+  <p id="message">Processing OAuth callback...</p>
 
   <script>
-    const CONFIG = window.WAYMARK_CONFIG || { PROXY_URL: '' };
-
-    async function handleCallback() {
+    // Process OAuth callback
+    (async () => {
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
       const state = params.get('state');
-      const error = params.get('error');
 
-      const msgEl = document.getElementById('message');
-      const spinnerEl = document.getElementById('spinner');
-
-      if (error) {
-        spinnerEl.style.display = 'none';
-        msgEl.textContent = 'OAuth error: ' + error;
-        msgEl.classList.add('error');
-        setTimeout(() => window.location.href = 'app.html', 3000);
+      if (!code || !state) {
+        showError('Invalid callback parameters');
         return;
       }
 
-      if (!code) {
-        spinnerEl.style.display = 'none';
-        msgEl.textContent = 'No authorization code received.';
-        msgEl.classList.add('error');
-        setTimeout(() => window.location.href = 'app.html', 3000);
+      if (state !== 'waymark_editor') {
+        showError('Invalid state parameter');
         return;
       }
 
-      const codeVerifier = sessionStorage.getItem('pkce_code_verifier');
-      if (!codeVerifier) {
-        spinnerEl.style.display = 'none';
-        msgEl.textContent = 'Missing PKCE verifier. Please try logging in again.';
-        msgEl.classList.add('error');
-        setTimeout(() => window.location.href = 'app.html', 3000);
-        return;
-      }
+      const cfg = await fetch('config.js').then(r => r.text()).then(t => {
+        // Extract config from JS file
+        const match = t.match(/window\.WAYMARK_CONFIG\s*=\s*\{([^}]+)\}/s);
+        if (!match) return null;
+        // Very rough parse - would need proper eval in production
+        return null;
+      });
+
+      // Use a simpler approach: fetch from known config endpoint
+      // In production, you'd have a separate config API
+      const configUrl = 'https://koulaxizis.github.io/waymark-beta/config.js';
 
       try {
-        const tokenResponse = await fetch(CONFIG.PROXY_URL + '/oauth2/token', {
+        const response = await fetch(configUrl);
+        const text = await response.text();
+
+        // Parse CLIENT_ID and REDIRECT_URI from the file
+        const clientIdMatch = text.match(/OSM_CLIENT_ID:\s*'([^']+)'/);
+        const redirectUriMatch = text.match(/REDIRECT_URI:\s*'([^']+)'/);
+        const proxyMatch = text.match(/PROXY_URL:\s*'([^']+)'/);
+
+        if (!clientIdMatch || !redirectUriMatch || !proxyMatch) {
+          throw new Error('Could not parse config');
+        }
+
+        const clientId = clientIdMatch[1];
+        const redirectUri = decodeURIComponent(redirectUriMatch[1]);
+        const proxyUrl = proxyMatch[1];
+
+        // Exchange code for token
+        const tokenResponse = await fetch(proxyUrl + '/oauth2/token', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({
-            client_id: CONFIG.OSM_CLIENT_ID,
-            code: code,
-            redirect_uri: CONFIG.REDIRECT_URI,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             grant_type: 'authorization_code',
-            code_verifier: codeVerifier,
-          }),
+            code: code,
+            redirect_uri: redirectUri,
+            client_id: clientId,
+            code_verifier: sessionStorage.getItem('pkce_verifier') || ''
+          })
         });
 
-        if (!tokenResponse.ok) {
-          const errText = await tokenResponse.text();
-          throw new Error('Token exchange failed: ' + errText);
-        }
-
         const tokenData = await tokenResponse.json();
-        const accessToken = tokenData.access_token;
 
-        if (accessToken) {
-          sessionStorage.setItem('osm_access_token', accessToken);
-          sessionStorage.removeItem('pkce_code_verifier');
-          msgEl.textContent = 'Login successful! Redirecting...';
+        if (tokenData.access_token) {
+          // Store token in sessionStorage
+          sessionStorage.setItem('osm_access_token', tokenData.access_token);
+
+          // Get user info
+          const userInfoResponse = await fetch(proxyUrl + '/api/0.6/user/details', {
+            headers: { Authorization: `Bearer ${tokenData.access_token}` }
+          });
+
+          const userInfo = await userInfoResponse.json();
+          const userId = userInfo.osm?.user?.id;
+          if (userId) {
+            sessionStorage.setItem('osm_user_id', userId.toString());
+          }
+
+          // Success - redirect to app
           window.location.href = 'app.html';
         } else {
-          throw new Error('No access_token in response');
+          showError('Token exchange failed');
         }
       } catch (err) {
-        spinnerEl.style.display = 'none';
-        msgEl.textContent = 'Error: ' + err.message;
-        msgEl.classList.add('error');
         console.error(err);
+        showError('Error: ' + err.message);
       }
-    }
+    })();
 
-    handleCallback();
+    function showError(msg) {
+      document.querySelector('.spinner').style.display = 'none';
+      document.getElementById('message').textContent = 'Error: ' + msg;
+      document.getElementById('message').style.color = '#ef4444';
+    }
   </script>
 </body>
 </html>

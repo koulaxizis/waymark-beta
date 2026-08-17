@@ -125,7 +125,6 @@
     if (lang === 'el' || lang === 'en') {
       currentLang = lang;
       localStorage.setItem('waymark_lang', lang);
-      // Reload to apply
       window.location.reload();
     }
   }

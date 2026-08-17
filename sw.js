@@ -1,11 +1,10 @@
 /* =========================================================
    WAYMARK — Service Worker
    Caches static assets for offline use.
+   Updated version with lazy module caching.
    ========================================================= */
 
-const CACHE_NAME = 'waymark-beta-v2-1-0';  // ↑ ΝΕΟ VERSION!
-const CACHE_VERSION = '20260817';
-
+const CACHE_NAME = 'waymark-beta-v2-1-0';
 const STATIC_ASSETS = [
   './',
   './app.html',
@@ -14,34 +13,18 @@ const STATIC_ASSETS = [
   './i18n.js',
   './theme.js',
   './app.js',
+  './utils.js',
   './manifest.json',
   './favicon.svg',
   './callback.html',
 
-  // Modules
-  './modules/nominatim.js',
-  './modules/poi-viewer.js',
-  './modules/gpx-editor.js',
-  './modules/xml-generator.js',
-  './modules/quality-checker.js',
-  './modules/heatmap.js',
-  './modules/tags-lookup.js',
-  './modules/notes-browser.js',
-  './modules/tutorial.js',
-  './modules/osm-editor.js',
-  './modules/track-recorder.js',
-  './modules/building-editor.js',
-  './modules/road-editor.js',
-  './modules/address-mapper.js',
-  './modules/quest-mode.js',
-
-  // External (Leaflet)
+  // Leaflet
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
 ];
 
 // =======================================================
-// Install — Pre-cache static assets
+// Install — Pre-cache core static assets
 // =======================================================
 
 self.addEventListener('install', (event) => {
@@ -87,34 +70,67 @@ self.addEventListener('fetch', (event) => {
       url.hostname.includes('overpass-api.de') ||
       url.hostname.includes('kumi.systems') ||
       url.hostname.includes('nominatim') ||
-      url.hostname.includes('workers.dev')) {
+      url.hostname.includes('workers.dev') ||
+      url.hostname.includes('osm.org')) {
+    // Network-first for APIs
+    event.respondWith(networkFirst(event.request));
     return;
   }
 
-  // Cache-first for static assets
+  // Skip external tile servers (let them be handled by browser cache)
+  if (url.hostname.includes('tile.') ||
+      url.hostname.includes('server.') ||
+      url.hostname.includes('basemaps.')) {
+    return;
+  }
+
+  // Cache-first for local static assets
   if (STATIC_ASSETS.includes(event.request.url) ||
-      STATIC_ASSETS.includes('./' + url.pathname.split('/').pop())) {
+      url.pathname.endsWith('.js') ||
+      url.pathname.endsWith('.css') ||
+      url.pathname.endsWith('.svg') ||
+      url.pathname.endsWith('.json') ||
+      url.pathname.endsWith('.html')) {
 
-    event.respondWith(
-      caches.match(event.request)
-        .then(cached => cached || fetch(event.request))
-    );
+    event.respondWith(cacheFirst(event.request));
     return;
   }
 
-  // Stale-while-revalidate for tiles and other GET requests
-  event.respondWith(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      const cached = await cache.match(event.request);
+  // Default: cache-first with network fallback
+  event.respondWith(cacheFirst(event.request));
+});
 
-      const networkPromise = fetch(event.request).then(response => {
+// =======================================================
+// Cache-first strategy
+// =======================================================
+
+function cacheFirst(request) {
+  return caches.match(request)
+    .then(cached => {
+      if (cached) return cached;
+
+      return fetch(request).then(response => {
         if (response && response.ok && response.type !== 'opaque') {
-          cache.put(event.request, response.clone());
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
         }
         return response;
       }).catch(() => null);
+    });
+}
 
-      return cached || networkPromise;
+// =======================================================
+// Network-first strategy (for APIs)
+// =======================================================
+
+function networkFirst(request) {
+  return fetch(request)
+    .then(response => {
+      if (response && response.ok) {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+      }
+      return response;
     })
-  );
-});
+    .catch(() => caches.match(request));
+}
