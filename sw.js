@@ -3,8 +3,8 @@
    Caches static assets for offline use.
    ========================================================= */
 
-const CACHE_NAME = 'waymark-v2-0-0';
-const CACHE_VERSION = '20260816';
+const CACHE_NAME = 'waymark-beta-v2-1-0';  // ↑ ΝΕΟ VERSION!
+const CACHE_VERSION = '20260817';
 
 const STATIC_ASSETS = [
   './',
@@ -62,8 +62,11 @@ self.addEventListener('activate', (event) => {
     caches.keys()
       .then(keys => Promise.all(
         keys
-          .filter(key => key !== CACHE_NAME)
-          .map(key => caches.delete(key))
+          .filter(key => key !== CACHE_NAME && key.startsWith('waymark'))
+          .map(key => {
+            console.log('Deleting old cache:', key);
+            return caches.delete(key);
+          })
       ))
       .then(() => self.clients.claim())
   );
@@ -99,12 +102,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stale-while-revalidate for other GET requests (tiles, etc.)
+  // Stale-while-revalidate for tiles and other GET requests
   event.respondWith(
     caches.open(CACHE_NAME).then(async (cache) => {
       const cached = await cache.match(event.request);
 
-      // Clone response immediately before any async ops
       const networkPromise = fetch(event.request).then(response => {
         if (response && response.ok && response.type !== 'opaque') {
           cache.put(event.request, response.clone());

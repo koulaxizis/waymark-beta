@@ -50,7 +50,7 @@
     registerServiceWorker();
     applyAppTranslations();
 
-    // Force Leaflet to recalculate size — multiple strategies
+    // Force Leaflet to recalculate size — aggressive strategy
     requestAnimationFrame(() => {
       if (appState.map) appState.map.invalidateSize();
     });
@@ -58,6 +58,7 @@
     setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 100);
     setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 500);
     setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 1000);
+    setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 2000);
 
     // Invalidate on window resize
     window.addEventListener('resize', () => {
@@ -78,7 +79,6 @@
       setTimeout(() => {
         overlay.style.display = 'none';
         if (appState.map) appState.map.invalidateSize();
-        // One more after the overlay is fully gone
         requestAnimationFrame(() => {
           if (appState.map) appState.map.invalidateSize();
         });
@@ -98,6 +98,10 @@
 
     const mapEl = document.getElementById('map');
 
+    console.log('Initializing map with:', { lat, lon, zoom });
+    console.log('Map element:', mapEl);
+    console.log('Map element dimensions:', mapEl.offsetWidth, 'x', mapEl.offsetHeight);
+
     appState.map = L.map(mapEl, {
       zoomControl: false,
       attributionControl: true,
@@ -111,11 +115,18 @@
     // Add default tile layer
     const defaultLayer = cfg.TILE_LAYERS?.standard;
     if (defaultLayer) {
+      console.log('Adding tile layer:', defaultLayer.url);
       appState.currentTileLayer = L.tileLayer(defaultLayer.url, {
         attribution: defaultLayer.attribution,
         maxZoom: defaultLayer.maxZoom,
-        crossOrigin: true,
+        // NO crossOrigin — removes CORS issues
       }).addTo(appState.map);
+
+      appState.currentTileLayer.on('tileloaderror', (e) => {
+        console.error('Tile load error:', e);
+      });
+    } else {
+      console.error('NO DEFAULT TILE LAYER FOUND IN CONFIG');
     }
 
     appState.map.on('locationfound', (e) => {
@@ -146,7 +157,10 @@
     locateBtn.innerHTML = '📍';
     locateBtn.title = isEl ? 'Τρέχουσα θέση' : 'Current location';
     locateBtn.type = 'button';
-    document.getElementById('map').parentElement.appendChild(locateBtn);
+    locateBtn.tabIndex = 0;
+    
+    // Append to #app directly, NOT to #map
+    document.getElementById('app').appendChild(locateBtn);
 
     locateBtn.addEventListener('click', () => {
       if (navigator.geolocation) {
@@ -195,13 +209,16 @@
 
   function initThemeToggle() {
     const themeBtn = document.getElementById('themeToggle');
-    if (!themeBtn) return;
+    if (!themeBtn) {
+      console.error('Theme toggle button not found');
+      return;
+    }
 
     function updateIcon() {
       const current = (typeof getCurrentTheme === 'function')
         ? getCurrentTheme()
         : 'dark';
-      // Show the icon for what you'll switch TO
+      // Show icon for what you'll switch TO
       themeBtn.textContent = current === 'dark' ? '☀️' : '🌙';
       themeBtn.title = current === 'dark'
         ? (isEl ? 'Εναλλαγή σε φωτεινό' : 'Switch to light')
@@ -274,6 +291,8 @@
           return;
         }
 
+        console.log('Switching layer to:', layerName, layerDef.url);
+
         if (appState.currentTileLayer) {
           appState.map.removeLayer(appState.currentTileLayer);
         }
@@ -281,11 +300,21 @@
         appState.currentTileLayer = L.tileLayer(layerDef.url, {
           attribution: layerDef.attribution,
           maxZoom: layerDef.maxZoom,
-          crossOrigin: true,
+          // NO crossOrigin
         }).addTo(appState.map);
+
+        // Log tile events for debugging
+        appState.currentTileLayer.on('tileloaderror', (e) => {
+          console.error('Tile load error for layer', layerName, ':', e);
+        });
 
         btns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+
+        // Force invalidation after layer switch
+        setTimeout(() => {
+          if (appState.map) appState.map.invalidateSize();
+        }, 100);
       });
     });
   }
@@ -357,7 +386,7 @@
 
     initFn(appState.map, content, appState);
 
-    // Invalidate after panel appears (layout shift)
+    // Invalidate after panel appears
     setTimeout(() => {
       if (appState.map) appState.map.invalidateSize();
     }, 100);
