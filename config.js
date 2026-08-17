@@ -2,7 +2,7 @@
 // Waymark Configuration
 // =======================================================
 
-const WAYMARK_CONFIG = {
+window.WAYMARK_CONFIG = {
   // OAuth 2.0
   OSM_CLIENT_ID: 'jzN7Vg3ipAflZ-zkwey4ozTfBFnoB_Qhv13KsvXkhIE',
   REDIRECT_URI: 'https://koulaxizis.github.io/waymark-beta/callback.html',
