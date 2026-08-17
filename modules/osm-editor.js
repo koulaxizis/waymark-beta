@@ -1,906 +1,574 @@
 /* =========================================================
-   WAYMARK — OSM Editor Module (v2)
-   - Create new POIs from map markers
-   - Edit existing POIs fetched from Overpass
-   - Default tags: name + type (amenity/shop/tourism)
-   - Autocomplete for type field
-   - ✅ check_date quick-confirm button
-   Uses OAuth 2.0 PKCE + Cloudflare Worker proxy.
+   WAYMARK — OSM Editor Module
+   Direct upload via OAuth 2.0 PKCE + Cloudflare Worker proxy.
+   Features: Login, Create POI, Edit Existing POI,
+   Autocomplete tag keys/values (Fix #4),
+   Load tags when clicking POI (Fix #13),
+   check_date quick confirm.
    ========================================================= */
+
+let osmEditorState = {
+  accessToken: null,
+  editingPoi: null,
+  editingMarkers: [],
+  tagCache: null,
+  pendingLat: null,
+  pendingLon: null,
+};
+
+// Common OSM tag presets for autocomplete (Fix #4)
+const OSM_TAG_PRESETS = {
+  amenity: ['bench', 'cafe', 'restaurant', 'bar', 'fast_food', 'pub', 'pharmacy', 'hospital',
+    'clinic', 'dentist', 'doctors', 'veterinary', 'school', 'kindergarten', 'college',
+    'university', 'library', 'fuel', 'atm', 'bank', 'post_office', 'police', 'fire_station',
+    'place_of_worship', 'parking', 'toilets', 'drinking_water', 'fountain', 'waste_basket',
+    'recycling', 'telephone', 'emergency_phone', 'theatre', 'cinema', 'arts_centre',
+    'community_centre', 'social_facility', 'childcare', 'grave_yard', 'crematorium',
+    'post_box', 'bicycle_rental', 'bicycle_parking', 'car_wash', 'car_sharing',
+    'charging_station', 'boat_rental', 'shelter', 'public_building', 'townhall', 'courthouse',
+    'embassy', 'marketplace', 'stripclub', 'nightclub', 'casino', 'studio', 'health_post',
+    'nursing_home', 'animal_boarding', 'animal_shelter', 'vending_machine', 'bbq',
+    'water_point', 'shower', 'sanitary_dump_station', 'motorcycle_parking', 'kneipp_water_cure'],
+  shop: ['supermarket', 'convenience', 'bakery', 'butcher', 'greengrocer', 'fishmonger',
+    'beverages', 'alcohol', 'chemist', 'cosmetics', 'hairdresser', 'beauty', 'clothes',
+    'shoes', 'jewelry', 'watches', 'sports', 'books', 'stationery', 'gift', 'toy',
+    'mobile_phone', 'computer', 'electronics', 'furniture', 'interior_decoration',
+    'hardware', 'garden_centre', 'doityourself', 'florist', 'optician', 'hearing_aids',
+    'medical_supply', 'kiosk', 'tobacco', 'e-cigarette', 'pyrotechnics', 'tea',
+    'coffee', 'chocolate', 'confectionery', 'ice_cream', 'health_food', 'organic',
+    'farm', 'laundry', 'dry_cleaning', 'tailor', 'fashion', 'bags', 'accessories',
+    'variety_store', 'department_store', 'mall', 'general', 'pet', 'photo', 'video',
+    'music', 'art', 'craft', 'travel_agency', 'ticket', 'estate_agent', 'car', 'car_repair',
+    'tyres', 'motorcycle', 'bicycle', 'boating', 'sewing', 'fabric', 'curtain', 'bed',
+    'frame', 'houseware', 'kitchen', 'paint', 'window_blind', 'flooring', 'tiles',
+    'electrical', 'lighting', 'security', 'locksmith', 'hifi', 'video_games', 'board_games',
+    'model', 'trophy', 'collector', 'antiques', 'musical_instrument', 'second_hand',
+    'charity', 'books', 'newsagent', 'camera', 'communication', 'copyshop', 'printing',
+    'money_lender', 'financial_service', 'massage', 'tattoo', 'piercing', 'funeral_directors'],
+  building: ['yes', 'apartments', 'house', 'detached', 'residential', 'commercial',
+    'industrial', 'warehouse', 'retail', 'office', 'public', 'civic', 'religious',
+    'church', 'chapel', 'cathedral', 'mosque', 'temple', 'synagogue', 'shrine',
+    'school', 'kindergarten', 'college', 'university', 'hospital', 'clinic',
+    'stadium', 'train_station', 'transportation', 'parking', 'garage', 'carport',
+    'shed', 'roof', 'service', 'entrance', 'terrace', 'hotel', 'ruins', 'construction'],
+  leisure: ['park', 'playground', 'fitness_centre', 'sports_centre', 'stadium', 'track',
+    'pitch', 'golf_course', 'swimming_pool', 'water_park', 'garden', 'nature_reserve',
+    'common', 'slipway', 'marina', 'boatyard', 'picnic_table', 'firepit', 'summer_camp',
+    'amusement_arcade', 'adult_gaming_centre', 'dance_hall', 'escape_game', 'horse_riding',
+    'ice_rink', 'miniature_golf', 'sauna', 'tanning_salon', 'beach_resort', 'club',
+    'hackerspace', 'outdoor_seating', 'bird_hide', 'fishing', 'swimming_area', 'bathing_place',
+    'disc_golf_course', 'sport_centre', 'stables', 'bandstand', 'bleachers', 'stand'],
+  tourism: ['hotel', 'motel', 'hostel', 'guest_house', 'apartment', 'camp_site',
+    'caravan_site', 'chalet', 'alpine_hut', 'apartment', 'attraction', 'viewpoint',
+    'museum', 'gallery', 'artwork', 'information', 'visitor_centre', 'picnic_site',
+    'zoo', 'theme_park', 'aquarium', 'winery', 'distillery', 'factory_tour',
+    'bed_and_breakfast', 'camp_pitch', 'trail_riding_station', 'aquarium', 'wayside_cross',
+    'wayside_shrine', 'artwork', 'holiday_park', 'trail_head', 'wilderness_hut'],
+  highway: ['residential', 'primary', 'secondary', 'tertiary', 'unclassified',
+    'service', 'footway', 'cycleway', 'path', 'track', 'pedestrian', 'living_street',
+    'motorway', 'trunk', 'motorway_link', 'trunk_link', 'primary_link', 'secondary_link',
+    'tertiary_link', 'bus_stop', 'crossing', 'speed_camera', 'traffic_signals',
+    'mini_roundabout', 'turning_circle', 'turning_loop', 'stop', 'give_way',
+    'milestone', 'emergency_access_point', 'escape', 'raceway', 'bridleway',
+    'steps', 'corridor', 'elevator', 'construction', 'proposed', 'rest_area',
+    'services'],
+  natural: ['tree', 'wood', 'forest', 'peak', 'cliff', 'cave_entrance', 'spring',
+    'water', 'wetland', 'scrub', 'heath', 'grassland', 'meadow', 'fell', 'bare_rock',
+    'scree', 'shingle', 'sand', 'mud', 'waterfall', 'geyser', 'hot_spring',
+    'bay', 'beach', 'coastline', 'strait', 'cape', 'peninsula', 'island', 'islet',
+    'reef', 'shoal', 'rock', 'stone', 'glacier', 'volcano'],
+  historic: ['monument', 'memorial', 'castle', 'fort', 'manor', 'ruins', 'archaeological_site',
+    'tomb', 'wayside_cross', 'wayside_shrine', 'boundary_stone', 'milestone', 'city_gate',
+    'battlefield', 'bomb_crater', 'building', 'church', 'railway_station', 'tram_stop',
+    'cannon', 'lime_kiln', 'mill_stone', 'quarry', 'mine', 'mine_shaft', 'boundary_mark'],
+  landuse: ['residential', 'commercial', 'industrial', 'retail', 'farmland', 'farmyard',
+    'meadow', 'orchard', 'vineyard', 'forest', 'allotments', 'cemetery', 'grass',
+    'greenhouse_horticulture', 'garages', 'meadow', 'military', 'quarry', 'landfill',
+    'construction', 'religious', 'recreation_ground', 'village_green', 'education', 'harbour'],
+};
 
 function initOsmEditor(map, container, appState) {
   const isEl = getCurrentLang() === 'el';
-  const token = sessionStorage.getItem('osm_access_token');
-  const loggedIn = !!token;
 
-  let tagRows = [];
-  let editingNode = null;
-  let poiLayer = null;
-
-  // Common POI types with Greek translations
-  const COMMON_TYPES = {
-    amenity: ['cafe', 'restaurant', 'bar', 'pub', 'fast_food', 'pharmacy', 'hospital', 'bank', 'atm', 'fuel', 'parking', 'school', 'library'],
-    shop: ['supermarket', 'convenience', 'bakery', 'butcher', 'clothes', 'electronics', 'books', 'jewelry', 'hardware'],
-    tourism: ['hotel', 'motel', 'hostel', 'guest_house', 'museum', 'attraction', 'camp_site', 'caravan_site']
-  };
+  osmEditorState.accessToken = sessionStorage.getItem('osm_access_token');
 
   container.innerHTML = `
-    <style>
-      .tag-row {
-        display: flex;
-        gap: 0.3rem;
-        margin-bottom: 0.3rem;
-        align-items: center;
-        position: relative;
-      }
-      .tag-row input {
-        flex: 1;
-        min-width: 0;
-        background: var(--bg);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        color: var(--fg);
-        padding: 0.4rem;
-        font-size: 0.8rem;
-        font-family: inherit;
-        transition: var(--transition);
-      }
-      .tag-row input:focus {
-        outline: none;
-        border-color: var(--accent);
-        box-shadow: 0 0 0 2px rgba(109, 74, 255, 0.15);
-      }
-      .tag-row input.key-input {
-        background: var(--bg-tertiary);
-        font-weight: 600;
-        width: 120px !important;
-        max-width: 120px;
-        flex: none;
-      }
-      .tag-row input.value-input {
-        flex: 1;
-      }
-      .tag-row .tag-del {
-        flex-shrink: 0;
-        width: 28px;
-        height: 28px;
-        background: var(--danger);
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 0.85rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: var(--transition);
-      }
-      .tag-row .tag-del:hover {
-        filter: brightness(1.15);
-      }
-      .autocomplete-dropdown {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 120px;
-        max-height: 200px;
-        overflow-y: auto;
-        background: var(--bg-secondary);
-        border: 1px solid var(--accent);
-        border-radius: 4px;
-        z-index: 100;
-        box-shadow: 0 4px 12px var(--shadow);
-        display: none;
-      }
-      .autocomplete-dropdown.visible {
-        display: block;
-      }
-      .autocomplete-item {
-        padding: 0.4rem 0.6rem;
-        cursor: pointer;
-        font-size: 0.8rem;
-        transition: var(--transition);
-      }
-      .autocomplete-item:hover {
-        background: var(--accent);
-        color: white;
-      }
-      .section-divider {
-        border: none;
-        border-top: 1px solid var(--border);
-        margin: 0.75rem 0;
-      }
-      .editing-badge {
-        background: rgba(109, 74, 255, 0.15);
-        border: 1px solid var(--accent);
-        color: var(--accent);
-        padding: 0.4rem 0.6rem;
-        border-radius: 4px;
-        font-size: 0.78rem;
-        margin-bottom: 0.5rem;
-        display: none;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.5rem;
-      }
-      .editing-badge.visible { display: flex; }
-      .editing-badge .cancel-edit {
-        background: transparent;
-        border: 1px solid var(--border);
-        color: var(--fg-muted);
-        font-size: 0.7rem;
-        padding: 0.2rem 0.5rem;
-        border-radius: 3px;
-        cursor: pointer;
-        flex-shrink: 0;
-      }
-      .editing-badge .cancel-edit:hover {
-        border-color: var(--danger);
-        color: var(--danger);
-      }
-      .poi-select-help {
-        font-size: 0.75rem;
-        color: var(--fg-muted);
-        margin-top: 0.3rem;
-        background: var(--bg-tertiary);
-        padding: 0.3rem 0.5rem;
-        border-radius: 4px;
-        border-left: 2px solid var(--accent);
-      }
-      .check-date-bar {
-        display: none;
-        align-items: center;
-        gap: 0.4rem;
-        padding: 0.5rem 0.75rem;
-        margin-bottom: 0.5rem;
-        background: rgba(34, 197, 94, 0.08);
-        border: 1px solid rgba(34, 197, 94, 0.3);
-        border-radius: 4px;
-      }
-      .check-date-bar.visible {
-        display: flex;
-      }
-      .check-date-info {
-        font-size: 0.75rem;
-        color: var(--fg-muted);
-        flex: 1;
-        line-height: 1.3;
-      }
-      .check-date-info strong {
-        color: var(--success, #22c55e);
-      }
-      .check-date-btn {
-        background: #22c55e;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        padding: 0.5rem 0.8rem;
-        font-size: 0.8rem;
-        cursor: pointer;
-        font-weight: 600;
-        white-space: nowrap;
-        flex-shrink: 0;
-        transition: var(--transition);
-      }
-      .check-date-btn:hover {
-        filter: brightness(1.1);
-      }
-      .check-date-btn:disabled {
-        opacity: 0.5;
-        cursor: wait;
-      }
-    </style>
-
-    <h2>📤 ${t('module.osm_editor')}</h2>
     <div class="module-form">
-      <div class="login-badge ${loggedIn ? 'active' : ''}">
-        ${loggedIn ? '✅ ' + t('osm.logged_in_as') : '🔒 ' + t('osm.not_logged_in')}
+      <div class="login-badge ${osmEditorState.accessToken ? 'active' : ''}" id="loginStatus">
+        ${osmEditorState.accessToken
+          ? (isEl ? '✅ Συνδεδεμένος ως: ' : '✅ Logged in as: ') + (sessionStorage.getItem('osm_username') || 'OSM User')
+          : (isEl ? '❌ Μη συνδεδεμένος' : '❌ Not logged in')}
       </div>
 
-      ${!loggedIn ? `<button class="btn btn-success" id="osmLoginBtn">${t('osm.login')}</button>` : ''}
+      <button class="btn ${osmEditorState.accessToken ? 'btn-danger' : 'btn-success'}" id="loginBtn">
+        ${osmEditorState.accessToken
+          ? (isEl ? '🚪 Αποσύνδεση' : '🚪 Logout')
+          : (isEl ? '🔐 Σύνδεση OSM' : '🔐 Login to OSM')}
+      </button>
 
-      <div class="editing-badge" id="editingBadge">
-        <span>✏️ ${isEl ? 'Επεξεργασία POI #' : 'Editing POI #'}<strong id="editingNodeId"></strong> <span id="editingNodeName"></span></span>
-        <button class="cancel-edit" id="cancelEditBtn">${isEl ? 'Ακύρωση' : 'Cancel'}</button>
-      </div>
+      <hr>
 
-      <div class="check-date-bar" id="checkDateBar">
-        <div class="check-date-info" id="checkDateInfo"></div>
-        <button class="check-date-btn" id="checkDateBtn">✅ ${isEl ? 'Επιβεβαίωση' : 'Confirm'}</button>
+      <div class="form-group">
+        <label>${isEl ? 'Κύριο Tag (π.χ. amenity, shop)' : 'Primary Tag (e.g. amenity, shop)'}</label>
+        <input type="text" id="osmTagKey" list="tagKeyList" placeholder="${isEl ? 'π.χ. amenity' : 'e.g. amenity'}" autocomplete="off">
+        <datalist id="tagKeyList">
+          ${Object.keys(OSM_TAG_PRESETS).map(k => `<option value="${k}">`).join('')}
+        </datalist>
       </div>
 
       <div class="form-group">
-        <label for="osmComment">${t('osm.changeset_comment')}</label>
-        <input type="text" id="osmComment" value="Added via Waymark" />
+        <label>${isEl ? 'Τιμή (π.χ. supermarket)' : 'Value (e.g. supermarket)'}</label>
+        <input type="text" id="osmTagValue" list="tagValueList" placeholder="${isEl ? 'π.χ. supermarket' : 'e.g. supermarket'}" autocomplete="off">
+        <datalist id="tagValueList"></datalist>
       </div>
 
       <div class="form-group">
-        <label>${isEl ? 'Tags' : 'Tags'}</label>
-        <div id="osmTagRows"></div>
-        <button class="btn btn-secondary" id="osmAddTag" style="padding: 0.4rem; font-size: 0.8rem; margin-bottom: 0;">+ ${isEl ? 'Προσθήκη tag' : 'Add tag'}</button>
+        <label>${isEl ? 'Όνομα' : 'Name'}</label>
+        <input type="text" id="osmTagName" placeholder="${isEl ? 'π.χ. Διάφορα' : 'e.g. Something'}">
       </div>
 
-      ${loggedIn ? `
-        <button class="btn btn-success" id="osmUploadBtn">${t('osm.upload')}</button>
-      ` : ''}
-      <button class="btn" id="osmDownloadBtn">${t('osm.download_osc')}</button>
-
-      <hr class="section-divider">
-
-      <div class="form-group">
-        <label>${isEl ? 'Επεξεργασία υπάρχοντος POI' : 'Edit existing POI'}</label>
-        <button class="btn btn-secondary" id="osmFetchPOIs" style="margin-bottom: 0.5rem;">${isEl ? 'Φόρτωση POIs στην περιοχή' : 'Fetch POIs in area'}</button>
-        <div class="poi-select-help" id="poiSelectHelp">
-          ${isEl ? '👆 Πάτησε σε ένα POI παρακάτω για να το επεξεργαστείς. Τα tags θα εμφανιστούν παραπάνω.' : '👆 Click a POI below to edit. Tags will appear above.'}
-        </div>
-        <div class="results-list" id="osmPOIList" style="max-height: 250px;"></div>
+      <div class="form-group" id="extraTagsContainer">
+        <label>${isEl ? 'Επιπλέον Tags' : 'Additional Tags'}</label>
+        <div id="extraTagsList"></div>
+        <button class="btn btn-sm btn-secondary" id="addTagBtn" style="margin-top: 0.3rem;">+ ${isEl ? 'Προσθήκη Tag' : 'Add Tag'}</button>
       </div>
 
-      <div class="results-list" id="osmStatus">
-        <div class="result-item" style="cursor: default; opacity: 0.6;">
-          ${isEl ? 'Σημεία στον χάρτη:' : 'Points on map:'} <span id="osmPointCount">0</span>
-        </div>
-      </div>
+      <hr>
+
+      <button class="btn" id="fetchExistingBtn">${isEl ? '📥 Φόρτωση POIs περιοχής' : '📥 Load Area POIs'}</button>
+      <button class="btn btn-success" id="uploadPoiBtn" ${!osmEditorState.accessToken ? 'disabled' : ''}>
+        ${isEl ? '📤 Ανέβασμα POI' : '📤 Upload POI'}
+      </button>
     </div>
   `;
 
-  // Initialize with default tags (name + type)
-  resetDefaultTags();
+  // Store map reference for async calls
+  window.appStateRef = window.appStateRef || {};
+  window.appStateRef.map = map;
 
-  function resetDefaultTags() {
-    tagRows = [{ key: 'name', value: '' }, { key: 'type', value: '' }];
-    renderTagRows();
-  }
+  // Fix #4: Autocomplete - update value datalist when key changes
+  document.getElementById('osmTagKey').addEventListener('input', (e) => {
+    const key = e.target.value.trim().toLowerCase();
+    const valueList = document.getElementById('tagValueList');
+    valueList.innerHTML = '';
 
-  function renderTagRows() {
-    const div = document.getElementById('osmTagRows');
-    div.innerHTML = '';
-
-    tagRows.forEach((row, idx) => {
-      const rowEl = document.createElement('div');
-      rowEl.className = 'tag-row';
-
-      const autoCompleteId = 'autocomplete-' + idx;
-      const isTypeField = row.key === 'type' || row.key === 'amenity' || row.key === 'shop' || row.key === 'tourism';
-
-      rowEl.innerHTML = `
-        <input type="text" class="key-input" placeholder="key" value="${escapeHtml(row.key)}" data-tag-key="${idx}">
-        <div style="flex:1; position:relative;">
-          <input type="text" class="value-input" placeholder="value" value="${escapeHtml(row.value)}" data-tag-val="${idx}" ${isTypeField ? 'id="' + autoCompleteId + '"' : ''}>
-          <div class="autocomplete-dropdown" id="${autoCompleteId}-dropdown"></div>
-        </div>
-        <button class="tag-del" data-tag-del="${idx}">×</button>
-      `;
-      div.appendChild(rowEl);
-
-      const keyInput = rowEl.querySelector(`[data-tag-key="${idx}"]`);
-      const valInput = rowEl.querySelector(`[data-tag-val="${idx}"]`);
-
-      keyInput.addEventListener('input', (e) => {
-        const newVal = e.target.value.trim();
-        tagRows[idx].key = newVal;
-
-        if (newVal === 'type' && row.value && !tagRows.find(tr => tr.key === 'amenity' || tr.key === 'shop' || tr.key === 'tourism')) {
-          const typeValue = row.value;
-          if (COMMON_TYPES.amenity.includes(typeValue)) {
-            tagRows[idx] = { key: 'amenity', value: typeValue };
-            keyInput.value = 'amenity';
-            row.value = typeValue;
-          } else if (COMMON_TYPES.shop.includes(typeValue)) {
-            tagRows[idx] = { key: 'shop', value: typeValue };
-            keyInput.value = 'shop';
-            row.value = typeValue;
-          } else if (COMMON_TYPES.tourism.includes(typeValue)) {
-            tagRows[idx] = { key: 'tourism', value: typeValue };
-            keyInput.value = 'tourism';
-            row.value = typeValue;
-          }
-        }
+    if (OSM_TAG_PRESETS[key]) {
+      OSM_TAG_PRESETS[key].forEach(v => {
+        valueList.innerHTML += `<option value="${v}">`;
       });
-
-      valInput.addEventListener('input', (e) => {
-        tagRows[idx].value = e.target.value;
-        if (isTypeField) {
-          showAutocomplete(e.target.value, autoCompleteId);
-        }
-      });
-
-      valInput.addEventListener('focus', (e) => {
-        if (isTypeField) {
-          showAutocomplete(e.target.value, autoCompleteId);
-        }
-      });
-
-      valInput.addEventListener('blur', () => {
-        setTimeout(() => {
-          const dd = document.getElementById(autoCompleteId + '-dropdown');
-          if (dd) dd.classList.remove('visible');
-        }, 150);
-      });
-
-      rowEl.querySelector(`[data-tag-del="${idx}"]`).addEventListener('click', () => {
-        tagRows.splice(idx, 1);
-        renderTagRows();
-      });
-    });
-  }
-
-  function showAutocomplete(query, dropdownId) {
-    const dropdown = document.getElementById(dropdownId);
-    if (!dropdown) return;
-
-    const rowIdx = parseInt(dropdownId.replace('autocomplete-', '').replace('-dropdown', ''));
-    if (isNaN(rowIdx)) return;
-
-    const keyRow = tagRows[rowIdx];
-    let suggestions = [];
-
-    const searchKey = keyRow.key.toLowerCase();
-    if (searchKey.includes('amenity') || searchKey === 'type') {
-      suggestions = suggestions.concat(COMMON_TYPES.amenity);
     }
-    if (searchKey.includes('shop') || searchKey === 'type') {
-      suggestions = suggestions.concat(COMMON_TYPES.shop);
-    }
-    if (searchKey.includes('tourism') || searchKey === 'type') {
-      suggestions = suggestions.concat(COMMON_TYPES.tourism);
-    }
-
-    if (query.trim()) {
-      suggestions = suggestions.filter(s => s.toLowerCase().includes(query.toLowerCase()));
-    }
-
-    suggestions = [...new Set(suggestions)].slice(0, 15);
-
-    if (suggestions.length === 0) {
-      dropdown.classList.remove('visible');
-      return;
-    }
-
-    dropdown.innerHTML = suggestions
-      .map(s => `<div class="autocomplete-item" data-value="${escapeHtml(s)}">${escapeHtml(s)}</div>`)
-      .join('');
-
-    dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const inputs = dropdown.parentElement.querySelectorAll('input');
-        if (inputs[0]) {
-          inputs[0].value = item.dataset.value;
-          tagRows[rowIdx].value = item.dataset.value;
-        }
-        dropdown.classList.remove('visible');
-      });
-    });
-
-    dropdown.classList.add('visible');
-  }
-
-  function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-  }
-
-  document.getElementById('osmAddTag').addEventListener('click', () => {
-    tagRows.push({ key: '', value: '' });
-    renderTagRows();
   });
 
-  function updateCount() {
-    const el = document.getElementById('osmPointCount');
-    if (el) el.textContent = appState.mapMarkers.length;
-  }
-  updateCount();
-  setInterval(updateCount, 500);
-
-  const loginBtn = document.getElementById('osmLoginBtn');
-  if (loginBtn) {
-    loginBtn.addEventListener('click', startOAuthLogin);
-  }
-
-  document.getElementById('cancelEditBtn').addEventListener('click', () => {
-    cancelEditMode();
+  // Add extra tag row
+  let extraTagCount = 0;
+  document.getElementById('addTagBtn').addEventListener('click', () => {
+    const list = document.getElementById('extraTagsList');
+    const row = document.createElement('div');
+    row.style.cssText = 'display: flex; gap: 0.3rem; margin-bottom: 0.3rem;';
+    row.innerHTML = `
+      <input type="text" placeholder="key" class="extra-tag-key" style="flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--fg); padding: 0.4rem; font-size: 0.8rem;">
+      <input type="text" placeholder="value" class="extra-tag-val" style="flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--fg); padding: 0.4rem; font-size: 0.8rem;">
+      <button class="btn btn-sm btn-danger" onclick="this.parentElement.remove()" style="width: auto; padding: 0.3rem 0.5rem;">✕</button>
+    `;
+    list.appendChild(row);
+    extraTagCount++;
   });
 
-  // --- check_date Bar logic ---
-  const checkDateBar = document.getElementById('checkDateBar');
-  const checkDateInfo = document.getElementById('checkDateInfo');
-  const checkDateBtn = document.getElementById('checkDateBtn');
-
-  function updateCheckDateBar() {
-    if (!editingNode) {
-      checkDateBar.classList.remove('visible');
-      return;
-    }
-
-    const existing = editingNode.tags?.['check_date'];
-    const today = new Date().toISOString().slice(0, 10);
-
-    if (existing) {
-      const existingDate = existing.slice(0, 10);
-      const daysSince = Math.floor((new Date(today) - new Date(existingDate)) / 86400000);
-
-      if (daysSince === 0) {
-        checkDateInfo.innerHTML = isEl
-          ? '<strong>✅ Ελέγχθηκε σήμερα</strong> — το tag είναι ενημερωμένο.'
-          : '<strong>✅ Checked today</strong> — tag is up to date.';
-        checkDateBtn.disabled = true;
-        checkDateBtn.textContent = '✅ ' + (isEl ? 'Ελέγχθηκε' : 'Checked');
-      } else {
-        checkDateInfo.innerHTML = isEl
-          ? `Τελευταίος έλεγχος: <strong>${escapeHtml(existing)}</strong> (${daysSince} ${isEl ? 'ημέρες πριν' : 'days ago'}). ${isEl ? 'Πάτα επιβεβαίωση για ανανέωση.' : 'Press confirm to refresh.'}`
-          : `Last checked: <strong>${escapeHtml(existing)}</strong> (${daysSince} days ago). Press confirm to refresh.`;
-        checkDateBtn.disabled = false;
-        checkDateBtn.textContent = '✅ ' + (isEl ? 'Επιβεβαίωση' : 'Confirm');
-      }
+  // Login button
+  document.getElementById('loginBtn').addEventListener('click', () => {
+    if (osmEditorState.accessToken) {
+      // Logout
+      sessionStorage.removeItem('osm_access_token');
+      sessionStorage.removeItem('osm_username');
+      osmEditorState.accessToken = null;
+      initOsmEditor(map, container, appState);
     } else {
-      checkDateInfo.innerHTML = isEl
-        ? 'Δεν υπάρχει <code>check_date</code>. Πάτα επιβεβαίωση για να προστεθεί.'
-        : 'No <code>check_date</code> tag. Press confirm to add it.';
-      checkDateBtn.disabled = false;
-      checkDateBtn.textContent = '✅ ' + (isEl ? 'Επιβεβαίωση' : 'Confirm');
-    }
-
-    checkDateBar.classList.add('visible');
-  }
-
-  checkDateBtn.addEventListener('click', async () => {
-    if (!editingNode) return;
-
-    const cfg = window.WAYMARK_CONFIG;
-    const currentToken = sessionStorage.getItem('osm_access_token');
-    if (!currentToken) {
-      alert(t('osm.not_logged_in'));
-      return;
-    }
-
-    checkDateBtn.disabled = true;
-    checkDateBtn.textContent = '⏳ ...';
-
-    const today = new Date().toISOString().slice(0, 10);
-
-    try {
-      const tagsObj = { ...editingNode.tags, check_date: today, source: 'Waymark' };
-
-      const changesetXml =
-        '<osm><changeset>' +
-        '<tag k="created_by" v="Waymark"/>' +
-        '<tag k="comment" v="Updated check_date via Waymark"/>' +
-        '</changeset></osm>';
-
-      const csRes = await fetch(cfg.PROXY_URL + '/api/0.6/changeset/create', {
-        method: 'PUT',
-        headers: { 'Authorization': 'Bearer ' + currentToken, 'Content-Type': 'application/xml' },
-        body: changesetXml,
-      });
-      if (!csRes.ok) throw new Error(await csRes.text());
-      const changesetId = (await csRes.text()).trim();
-
-      let oscXml = '<osmChange version="0.6" generator="Waymark">\n  <modify>\n';
-      oscXml += '    <node id="' + editingNode.id + '" version="' + editingNode.version + '" changeset="' + changesetId + '" lat="' + editingNode.lat.toFixed(7) + '" lon="' + editingNode.lon.toFixed(7) + '">\n';
-      Object.entries(tagsObj).forEach(([k, v]) => {
-        oscXml += '      <tag k="' + escapeXml(k) + '" v="' + escapeXml(v) + '"/>\n';
-      });
-      oscXml += '    </node>\n';
-      oscXml += '  </modify>\n</osmChange>';
-
-      const upRes = await fetch(cfg.PROXY_URL + '/api/0.6/changeset/' + changesetId + '/upload', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + currentToken, 'Content-Type': 'application/xml' },
-        body: oscXml,
-      });
-      if (!upRes.ok) throw new Error(await upRes.text());
-
-      await fetch(cfg.PROXY_URL + '/api/0.6/changeset/' + changesetId + '/close', {
-        method: 'PUT',
-        headers: { 'Authorization': 'Bearer ' + currentToken },
-      });
-
-      editingNode.tags['check_date'] = today;
-
-      const cdRow = tagRows.find(r => r.key === 'check_date');
-      if (cdRow) {
-        cdRow.value = today;
-      } else {
-        tagRows.push({ key: 'check_date', value: today });
-        renderTagRows();
-      }
-
-      checkDateBtn.textContent = '✅ ' + (isEl ? 'Ελέγχθηκε!' : 'Done!');
-      checkDateInfo.innerHTML = '<strong>✅ ' + (isEl ? 'Ελέγχθηκε σήμερα</strong> — Ανέβηκε στο OSM.' : 'Checked today</strong> — Uploaded to OSM.');
-
-      setTimeout(() => {
-        checkDateBtn.textContent = '✅ ' + (isEl ? 'Επιβεβαίωση' : 'Confirm');
-        checkDateBtn.disabled = true;
-        updateCheckDateBar();
-      }, 2000);
-
-    } catch (err) {
-      checkDateBtn.textContent = '✅ ' + (isEl ? 'Επιβεβαίωση' : 'Confirm');
-      checkDateBtn.disabled = false;
-      alert((isEl ? 'Σφάλμα: ' : 'Error: ') + err.message.substring(0, 150));
+      // Start OAuth flow
+      startOAuthFlow();
     }
   });
 
-  function cancelEditMode() {
-    editingNode = null;
-    document.getElementById('editingBadge').classList.remove('visible');
-    checkDateBar.classList.remove('visible');
-    resetDefaultTags();
-    const upBtn = document.getElementById('osmUploadBtn');
-    if (upBtn) upBtn.textContent = t('osm.upload');
-
-    if (poiLayer) {
-      poiLayer.eachLayer(l => {
-        l.setStyle({ fillColor: '#6d4aff', fillOpacity: 0.5, radius: 6 });
-      });
-    }
-  }
-
-  // --- Fetch POIs for editing ---
-  document.getElementById('osmFetchPOIs').addEventListener('click', async () => {
-    const listDiv = document.getElementById('osmPOIList');
-    listDiv.innerHTML = '<div class="spinner"></div>';
-
-    const bounds = map.getBounds();
-    const bbox = bounds.getSouth() + ',' + bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast();
-
-    const query = '[out:json][timeout:25];(node["amenity"](' + bbox + ');node["shop"](' + bbox + ');node["tourism"](' + bbox + '););out body 50;';
-
-    try {
-      const fetchFn = window.safeOverpassFetch || safeOverpassFetch;
-      const data = await fetchFn(query, isEl);
-
-      if (poiLayer) { map.removeLayer(poiLayer); poiLayer = null; }
-      poiLayer = L.layerGroup();
-      appState.mapMarkers.forEach(m => map.removeLayer(m));
-      appState.mapMarkers = [];
-
-      const nodes = data.elements.filter(e => e.type === 'node' && e.lat && e.lon);
-
-      if (nodes.length === 0) {
-        listDiv.innerHTML = '<div class="result-item">' + t('common.no_results') + '</div>';
-        return;
-      }
-
-      listDiv.innerHTML = '';
-      poiLayer.addTo(map);
-
-      nodes.forEach(node => {
-        const tags = node.tags || {};
-        const name = tags.name || tags['name:en'] || (isEl ? 'Χωρίς όνομα' : 'Unnamed');
-        const category = tags.amenity || tags.shop || tags.tourism || '';
-
-        let badge = '';
-        if (tags.check_date) {
-          const daysSince = Math.floor((Date.now() - new Date(tags.check_date)) / 86400000);
-          if (daysSince <= 30) {
-            badge = ' <span style="color:#22c55e;font-size:0.7rem;">✓</span>';
-          } else if (daysSince <= 365) {
-            badge = ' <span style="color:#ffa040;font-size:0.7rem;">⚠</span>';
-          } else {
-            badge = ' <span style="color:#ef4444;font-size:0.7rem;">⏰</span>';
-          }
-        }
-
-        const marker = L.circleMarker([node.lat, node.lon], {
-          radius: 6,
-          fillColor: '#6d4aff',
-          color: '#6d4aff',
-          fillOpacity: 0.5,
-          weight: 1
-        });
-        poiLayer.addLayer(marker);
-
-        const item = document.createElement('div');
-        item.className = 'result-item';
-        item.innerHTML = '<strong>' + name + '</strong>' + badge + '<br><small>' + category + ' · #' + node.id + '</small>';
-        item.addEventListener('click', () => selectPOIForEditing(node, marker));
-        listDiv.appendChild(item);
-      });
-    } catch (err) {
-      let msg = err.message;
-      if (msg === 'Failed to fetch') {
-        msg = isEl ? 'Αδυναμία σύνδεσης με Overpass' : 'Cannot connect to Overpass';
-      }
-      listDiv.innerHTML = '<div class="result-item">' + t('common.error') + ': ' + msg + '</div>';
-    }
+  // Fetch existing POIs
+  document.getElementById('fetchExistingBtn').addEventListener('click', () => {
+    fetchExistingPOIs(map, appState);
   });
 
-  function selectPOIForEditing(node, marker) {
-    editingNode = node;
-
-    const badge = document.getElementById('editingBadge');
-    const badgeId = document.getElementById('editingNodeId');
-    const badgeName = document.getElementById('editingNodeName');
-    badge.classList.add('visible');
-    badgeId.textContent = node.id;
-    badgeName.textContent = ' — ' + (node.tags?.name || '');
-
-    tagRows = Object.entries(node.tags || {}).map(([k, v]) => ({ key: k, value: v }));
-    if (!tagRows.find(r => r.key === 'name')) {
-      tagRows.unshift({ key: 'name', value: '' });
-    }
-    renderTagRows();
-
-    const uploadBtn = document.getElementById('osmUploadBtn');
-    if (uploadBtn) {
-      uploadBtn.textContent = isEl ? '💾 Αποθήκευση αλλαγών' : '💾 Save changes';
-    }
-
-    if (poiLayer) {
-      poiLayer.eachLayer(l => {
-        l.setStyle({ fillColor: '#6d4aff', fillOpacity: 0.5, radius: 6 });
-      });
-      marker.setStyle({ fillColor: '#ffb143', fillOpacity: 0.9, radius: 8 });
-    }
-
-    map.setView([node.lat, node.lon], 16);
-    marker.bindPopup(
-      '<b>' + (node.tags?.name || 'Node #' + node.id) + '</b><br>' +
-      '<small>Version: ' + node.version + ' · ID: ' + node.id + '</small><br>' +
-      '<small>' + node.lat.toFixed(6) + ', ' + node.lon.toFixed(6) + '</small>'
-    ).openPopup();
-
-    updateCheckDateBar();
-  }
-
-  // --- Upload (Create or Modify) ---
-  const uploadBtn = document.getElementById('osmUploadBtn');
-  if (uploadBtn) {
-    uploadBtn.addEventListener('click', async () => {
-      const cfg = window.WAYMARK_CONFIG;
-      if (!cfg || cfg.OSM_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
-        alert(t('osm.config_warning'));
-        return;
-      }
-
-      const currentToken = sessionStorage.getItem('osm_access_token');
-      if (!currentToken) {
-        alert(t('osm.not_logged_in'));
-        return;
-      }
-
-      const statusDiv = document.getElementById('osmStatus');
-      statusDiv.innerHTML = '<div class="result-item"><div class="spinner"></div></div>';
-
-      const comment = document.getElementById('osmComment').value || (editingNode ? 'Edited via Waymark' : 'Added via Waymark');
-      const validTags = tagRows.filter(tr => tr.key && tr.value);
-
-      try {
-        const changesetXml =
-          '<osm><changeset>' +
-          '<tag k="created_by" v="Waymark"/>' +
-          '<tag k="comment" v="' + escapeXml(comment) + '"/>' +
-          '</changeset></osm>';
-
-        const csResponse = await fetch(cfg.PROXY_URL + '/api/0.6/changeset/create', {
-          method: 'PUT',
-          headers: { 'Authorization': 'Bearer ' + currentToken, 'Content-Type': 'application/xml' },
-          body: changesetXml,
-        });
-
-        if (!csResponse.ok) {
-          const errText = await csResponse.text();
-          throw new Error('Changeset creation failed: ' + csResponse.status + ' ' + errText);
-        }
-
-        const changesetId = (await csResponse.text()).trim();
-
-        let oscXml;
-
-        if (editingNode) {
-          if (!editingNode.version) {
-            throw new Error(isEl ? 'Δεν βρέθηκε version του node.' : 'Node version not found.');
-          }
-
-          oscXml = '<osmChange version="0.6" generator="Waymark">\n  <modify>\n';
-          oscXml += '    <node id="' + editingNode.id + '" version="' + editingNode.version + '" changeset="' + changesetId + '" lat="' + editingNode.lat.toFixed(7) + '" lon="' + editingNode.lon.toFixed(7) + '">\n';
-          validTags.forEach(tag => {
-            oscXml += '      <tag k="' + escapeXml(tag.key) + '" v="' + escapeXml(tag.value) + '"/>\n';
-          });
-          oscXml += '      <tag k="source" v="Waymark"/>\n';
-          oscXml += '    </node>\n';
-          oscXml += '  </modify>\n</osmChange>';
-
-        } else {
-          if (appState.mapMarkers.length === 0) {
-            alert(t('osm.no_points'));
-            return;
-          }
-
-          oscXml = '<osmChange version="0.6" generator="Waymark">\n  <create>\n';
-          appState.mapMarkers.forEach((marker, idx) => {
-            const pos = marker.getLatLng();
-            const nodeId = -(idx + 1);
-            oscXml += '    <node id="' + nodeId + '" version="0" changeset="' + changesetId + '" lat="' + pos.lat.toFixed(7) + '" lon="' + pos.lng.toFixed(7) + '">\n';
-            validTags.forEach(tag => {
-              oscXml += '      <tag k="' + escapeXml(tag.key) + '" v="' + escapeXml(tag.value) + '"/>\n';
-            });
-            oscXml += '      <tag k="source" v="Waymark"/>\n';
-            oscXml += '    </node>\n';
-          });
-          oscXml += '  </create>\n  <modify/>\n  <delete/>\n</osmChange>';
-        }
-
-        const uploadResponse = await fetch(cfg.PROXY_URL + '/api/0.6/changeset/' + changesetId + '/upload', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + currentToken, 'Content-Type': 'application/xml' },
-          body: oscXml,
-        });
-
-        if (!uploadResponse.ok) {
-          const errText = await uploadResponse.text();
-          throw new Error('Upload failed: ' + uploadResponse.status + ' ' + errText);
-        }
-
-        const closeResponse = await fetch(cfg.PROXY_URL + '/api/0.6/changeset/' + changesetId + '/close', {
-          method: 'PUT',
-          headers: { 'Authorization': 'Bearer ' + currentToken },
-        });
-
-        if (!closeResponse.ok) {
-          console.warn('Changeset close failed, but data was uploaded.');
-        }
-
-        statusDiv.innerHTML =
-          '<div class="result-item" style="color: var(--success);">' +
-          '✅ ' + t('osm.upload_success') + '<br>' +
-          '<small>Changeset #' + changesetId + '</small>' +
-          '</div>';
-
-        if (editingNode) {
-          cancelEditMode();
-        }
-
-      } catch (err) {
-        statusDiv.innerHTML =
-          '<div class="result-item" style="color: var(--danger);">' +
-          '❌ ' + t('osm.upload_failed') + ': ' + err.message +
-          '</div>';
-        console.error(err);
-      }
-    });
-  }
-
-  // --- Download .osc button ---
-  document.getElementById('osmDownloadBtn').addEventListener('click', () => {
-    if (appState.mapMarkers.length === 0 && !editingNode) {
-      alert(t('osm.no_points'));
-      return;
-    }
-
-    const comment = document.getElementById('osmComment').value || 'Added via Waymark';
-    const validTags = tagRows.filter(tr => tr.key && tr.value);
-
-    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-    xml += '<osmChange version="0.6" generator="Waymark">\n';
-
-    if (editingNode) {
-      xml += '  <modify>\n';
-      xml += '    <node id="' + editingNode.id + '" version="' + editingNode.version + '" lat="' + editingNode.lat.toFixed(7) + '" lon="' + editingNode.lon.toFixed(7) + '">\n';
-      validTags.forEach(tag => {
-        xml += '      <tag k="' + escapeXml(tag.key) + '" v="' + escapeXml(tag.value) + '"/>\n';
-      });
-      xml += '      <tag k="source" v="Waymark"/>\n';
-      xml += '    </node>\n';
-      xml += '  </modify>\n';
-    } else {
-      xml += '  <create>\n';
-      appState.mapMarkers.forEach((marker, idx) => {
-        const pos = marker.getLatLng();
-        const id = -(idx + 1);
-        xml += '    <node id="' + id + '" version="0" lat="' + pos.lat.toFixed(7) + '" lon="' + pos.lng.toFixed(7) + '">\n';
-        validTags.forEach(tag => {
-          xml += '      <tag k="' + escapeXml(tag.key) + '" v="' + escapeXml(tag.value) + '"/>\n';
-        });
-        xml += '      <tag k="source" v="Waymark"/>\n';
-        xml += '    </node>\n';
-      });
-      xml += '  </create>\n  <modify/>\n  <delete/>\n';
-    }
-
-    xml += '</osmChange>';
-    downloadFile(xml, 'waymark-export.osc', 'application/xml');
-
-    document.getElementById('osmStatus').innerHTML =
-      '<div class="result-item" style="color: var(--success);">' +
-      '✅ <code>waymark-export.osc</code><br>' +
-      (isEl
-        ? 'Άνοιξέ το στο JOSM (File → Open) ή στο iD editor στο openstreetmap.org.'
-        : 'Open in JOSM (File → Open) or in the iD editor at openstreetmap.org.') +
-      '</div>';
+  // Upload POI
+  document.getElementById('uploadPoiBtn').addEventListener('click', () => {
+    uploadPOI(map);
   });
 }
 
-// =========================================================
-// Helper Functions
-// =========================================================
+// =======================================================
+// OAuth 2.0 PKCE Flow
+// =======================================================
 
-async function safeOverpassFetch(query, isEl) {
-  const servers = [
-    'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter'
-  ];
-
-  for (let i = 0; i < servers.length; i++) {
-    try {
-      const response = await fetch(servers[i], {
-        method: 'POST',
-        body: query
-      });
-
-      if (!response.ok) {
-        if (i < servers.length - 1) continue;
-        const text = await response.text();
-        throw new Error(text.substring(0, 150));
-      }
-
-      const ct = response.headers.get('content-type') || '';
-      if (!ct.includes('application/json')) {
-        if (i < servers.length - 1) continue;
-        const text = await response.text();
-        throw new Error(text.substring(0, 150));
-      }
-
-      return await response.json();
-    } catch (err) {
-      if (err.message === 'Failed to fetch' && i < servers.length - 1) continue;
-      if (i < servers.length - 1) continue;
-      throw err;
-    }
-  }
-
-  throw new Error(isEl ? 'Αδυναμία σύνδεσης με Overpass API' : 'Cannot connect to Overpass API');
-}
-
-function escapeXml(str) {
-  if (!str) return '';
-  return str.replace(/[<>&'"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;',"'":"&apos;",'"':'&quot;' }[c]));
-}
-
-function downloadFile(content, filename, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function startOAuthLogin() {
+function startOAuthFlow() {
   const cfg = window.WAYMARK_CONFIG;
-  if (!cfg || cfg.OSM_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
-    alert(t('osm.config_warning'));
+  const clientId = cfg.OSM_CLIENT_ID;
+  const redirectUri = cfg.REDIRECT_URI;
+  const scope = cfg.OAUTH_SCOPE;
+
+  // Generate PKCE
+  const codeVerifier = generateRandomString(128);
+  const codeChallenge = base64URLEncode(sha256(codeVerifier));
+
+  sessionStorage.setItem('pkce_code_verifier', codeVerifier);
+
+  const authUrl = `${cfg.OSM_API_URL}/oauth2/authorize?` +
+    `response_type=code&` +
+    `client_id=${clientId}&` +
+    `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+    `scope=${encodeURIComponent(scope)}&` +
+    `code_challenge=${codeChallenge}&` +
+    `code_challenge_method=S256`;
+
+  window.location.href = authUrl;
+}
+
+function generateRandomString(length) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  let result = '';
+  const values = new Uint8Array(length);
+  crypto.getRandomValues(values);
+  for (let i = 0; i < length; i++) {
+    result += chars[values[i] % chars.length];
+  }
+  return result;
+}
+
+function base64URLEncode(arrayBuffer) {
+  return btoa(String.fromCharCode.apply(null, new Uint8Array(arrayBuffer)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+async function sha256(message) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(message);
+  return await crypto.subtle.digest('SHA-256', data);
+}
+
+// Expose for callback.html
+window.handleOAuthCallback = async function (code) {
+  const cfg = window.WAYMARK_CONFIG;
+  const codeVerifier = sessionStorage.getItem('pkce_code_verifier');
+
+  if (!codeVerifier) {
+    console.error('PKCE verifier not found');
     return;
   }
 
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  const codeVerifier = btoa(String.fromCharCode(...array))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  sessionStorage.setItem('pkce_code_verifier', codeVerifier);
-
-  const encoder = new TextEncoder();
-  const data = encoder.encode(codeVerifier);
-  crypto.subtle.digest('SHA-256', data).then(hash => {
-    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-
-    const params = new URLSearchParams({
-      client_id: cfg.OSM_CLIENT_ID,
+  const response = await fetch(cfg.OSM_API_URL + '/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: code,
       redirect_uri: cfg.REDIRECT_URI,
-      response_type: 'code',
-      scope: 'read_prefs write_api write_notes write_gpx',
-      state: Date.now().toString(),
-      code_challenge: codeChallenge,
-      code_challenge_method: 'S256',
+      client_id: cfg.OSM_CLIENT_ID,
+      code_verifier: codeVerifier,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (data.access_token) {
+    sessionStorage.setItem('osm_access_token', data.access_token);
+
+    // Get username
+    const userRes = await fetch(cfg.OSM_API_URL + '/api/0.6/user/details.json', {
+      headers: { 'Authorization': 'Bearer ' + data.access_token },
+    });
+    const userData = await userRes.json();
+    const username = userData.user?.display_name || 'User';
+    sessionStorage.setItem('osm_username', username);
+
+    // Clean up
+    sessionStorage.removeItem('pkce_code_verifier');
+
+    // Redirect back to app
+    window.location.href = cfg.REDIRECT_URI.replace('/callback.html', '/app.html');
+  }
+};
+
+// =======================================================
+// Fetch Existing POIs (Fix #13: Click to load tags)
+// =======================================================
+
+async function fetchExistingPOIs(map, appState) {
+  const isEl = getCurrentLang() === 'el';
+
+  // Clear previous markers
+  osmEditorState.editingMarkers.forEach(m => map.removeLayer(m));
+  osmEditorState.editingMarkers = [];
+
+  const bounds = map.getBounds();
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+
+  const query = `
+    [out:json][timeout:25];
+    (
+      node(${sw.lat},${sw.lon},${ne.lat},${ne.lon});
+    );
+    out body 50;
+  `.trim();
+
+  try {
+    const response = await fetch(`${WAYMARK_CONFIG.OVERPASS_URL}?data=${encodeURIComponent(query)}`);
+    if (!response.ok) throw new Error('Overpass error');
+    const data = await response.json();
+
+    data.elements.forEach(el => {
+      if (!el.lat || !el.lon) return;
+      if (!el.tags || Object.keys(el.tags).length === 0) return;
+
+      const marker = L.circleMarker([el.lat, el.lon], {
+        radius: 8,
+        fillColor: '#6d4aff',
+        color: 'white',
+        weight: 2,
+        fillOpacity: 0.8,
+      }).addTo(map);
+
+      marker.osmData = el;
+
+      // Fix #13: Load tags into editor when clicked
+      marker.on('click', () => {
+        loadTagsIntoEditor(el);
+      });
+
+      marker.bindPopup(`
+        <div style="min-width: 180px;">
+          <strong>${el.tags?.name || '(unnamed)'}</strong><br>
+          <small style="color: var(--fg-muted)">${el.lat.toFixed(5)}, ${el.lon.toFixed(5)}</small><br>
+          <small>${Object.keys(el.tags).length} tags</small>
+        </div>
+      `);
+
+      osmEditorState.editingMarkers.push(marker);
     });
 
-    window.location.href = 'https://www.openstreetmap.org/oauth2/authorize?' + params.toString();
-  });
+  } catch (err) {
+    console.error('Fetch POIs error:', err);
+    alert(isEl ? 'Σφάλμα φόρτωσης POIs.' : 'Error loading POIs.');
+  }
 }
 
+// Fix #13: Load existing POI tags into the editor form
+function loadTagsIntoEditor(el) {
+  const isEl = getCurrentLang() === 'el';
+
+  osmEditorState.editingPoi = el;
+  osmEditorState.pendingLat = el.lat;
+  osmEditorState.pendingLon = el.lon;
+
+  const tags = el.tags || {};
+
+  // Find the "main" tag (first non-name, non-addr tag)
+  const skipKeys = ['name', 'source', 'created_by', 'check_date'];
+  let mainKey = null;
+  let mainVal = null;
+
+  for (const [k, v] of Object.entries(tags)) {
+    if (!skipKeys.includes(k)) {
+      mainKey = k;
+      mainVal = v;
+      break;
+    }
+  }
+
+  // Fill main tag fields
+  document.getElementById('osmTagKey').value = mainKey || '';
+  document.getElementById('osmTagValue').value = mainVal || '';
+  document.getElementById('osmTagName').value = tags.name || '';
+
+  // Update autocomplete for value
+  if (mainKey && OSM_TAG_PRESETS[mainKey]) {
+    const valueList = document.getElementById('tagValueList');
+    valueList.innerHTML = OSM_TAG_PRESETS[mainKey].map(v => `<option value="${v}">`).join('');
+  }
+
+  // Fill extra tags
+  const extraList = document.getElementById('extraTagsList');
+  extraList.innerHTML = '';
+
+  Object.entries(tags).forEach(([k, v]) => {
+    if (k === mainKey || k === 'name' || k === 'source' || k === 'created_by') return;
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display: flex; gap: 0.3rem; margin-bottom: 0.3rem;';
+    row.innerHTML = `
+      <input type="text" value="${escapeAttr(k)}" class="extra-tag-key" style="flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--fg); padding: 0.4rem; font-size: 0.8rem;">
+      <input type="text" value="${escapeAttr(v)}" class="extra-tag-val" style="flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--fg); padding: 0.4rem; font-size: 0.8rem;">
+      <button class="btn btn-sm btn-danger" onclick="this.parentElement.remove()" style="width: auto; padding: 0.3rem 0.5rem;">✕</button>
+    `;
+    extraList.appendChild(row);
+  });
+
+  // Show a notification
+  const status = document.getElementById('loginStatus');
+  const originalText = status.textContent;
+  status.textContent = isEl
+    ? `📝 Φορτώθηκε POI #${el.id} — ενημέρωσε και ανέβασε`
+    : `📝 Loaded POI #${el.id} — update and upload`;
+  setTimeout(() => { status.textContent = originalText; }, 3000);
+}
+
+function escapeAttr(str) {
+  return String(str).replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// =======================================================
+// Upload POI
+// =======================================================
+
+async function uploadPOI(map) {
+  const isEl = getCurrentLang() === 'el';
+  const token = sessionStorage.getItem('osm_access_token');
+
+  if (!token) {
+    alert(isEl ? 'Πρέπει να συνδεθείς πρώτα.' : 'You must log in first.');
+    return;
+  }
+
+  const tagKey = document.getElementById('osmTagKey').value.trim();
+  const tagValue = document.getElementById('osmTagValue').value.trim();
+  const tagName = document.getElementById('osmTagName').value.trim();
+
+  if (!tagKey || !tagValue) {
+    alert(isEl ? 'Συμπλήρωσε τουλάχιστον ένα tag (key + value).' : 'Fill in at least one tag (key + value).');
+    return;
+  }
+
+  // Collect all tags
+  const tags = {};
+  tags[tagKey] = tagValue;
+  if (tagName) tags.name = tagName;
+
+  document.querySelectorAll('#extraTagsList > div').forEach(row => {
+    const k = row.querySelector('.extra-tag-key')?.value.trim();
+    const v = row.querySelector('.extra-tag-val')?.value.trim();
+    if (k && v) tags[k] = v;
+  });
+
+  // Determine coordinates
+  let lat, lon;
+  let isEdit = !!osmEditorState.editingPoi;
+
+  if (isEdit) {
+    lat = osmEditorState.pendingLat;
+    lon = osmEditorState.pendingLon;
+  } else {
+    lat = osmEditorState.pendingLat || map.getCenter().lat;
+    lon = osmEditorState.pendingLon || map.getCenter().lng;
+  }
+
+  // Build changeset XML
+  const changesetTags = Object.entries(tags).map(([k, v]) =>
+    `      <tag k="${escapeAttr(k)}" v="${escapeAttr(v)}"/>`
+  ).join('\n');
+
+  const elementType = isEdit ? 'modify' : 'create';
+  const nodeId = isEdit ? osmEditorState.editingPoi.id : '-1';
+  const versionAttr = isEdit ? ` version="${osmEditorState.editingPoi.version || 1}"` : '';
+
+  const oscXml = `<?xml version="1.0" encoding="UTF-8"?>
+<osmChange version="0.6" generator="Waymark">
+  <${elementType}>
+    <node id="${nodeId}" lat="${lat}" lon="${lon}"${versionAttr}>
+${changesetTags}
+    </node>
+  </${elementType}>
+</osmChange>`;
+
+  // Upload via proxy
+  const proxyUrl = WAYMARK_CONFIG.PROXY_URL;
+
+  try {
+    // Step 1: Create changeset
+    const changesetXml = `<osm>
+  <changeset>
+    <tag k="created_by" v="Waymark"/>
+    <tag k="comment" v="Waymark ${elementType}"/>
+  </changeset>
+</osm>`;
+
+    const csResponse = await fetch(proxyUrl + '/changeset/create', {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/xml',
+      },
+      body: changesetXml,
+    });
+
+    if (!csResponse.ok) throw new Error('Changeset creation failed');
+    const changesetId = (await csResponse.text()).trim();
+
+    // Step 2: Upload changeset data
+    const dataResponse = await fetch(`${proxyUrl}/changeset/${changesetId}/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/xml',
+      },
+      body: oscXml.replace('<osmChange', `<osmChange`),
+    });
+
+    if (!dataResponse.ok) throw new Error('Upload failed');
+
+    // Step 3: Close changeset
+    await fetch(`${proxyUrl}/changeset/${changesetId}/close`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+      },
+    });
+
+    alert(isEl ? `✅ Επιτυχία! Changeset #${changesetId}` : `✅ Success! Changeset #${changesetId}`);
+
+    // Reset editor
+    osmEditorState.editingPoi = null;
+    document.getElementById('osmTagKey').value = '';
+    document.getElementById('osmTagValue').value = '';
+    document.getElementById('osmTagName').value = '';
+    document.getElementById('extraTagsList').innerHTML = '';
+
+  } catch (err) {
+    console.error('Upload error:', err);
+    alert(isEl ? 'Σφάλμα ανεβάσματος.' : 'Upload error.');
+  }
+}
+
+// Handle map clicks for new POI creation
+appState_onMapClick_osmEditor = function (lat, lng) {
+  const isEl = getCurrentLang() === 'el';
+
+  osmEditorState.pendingLat = lat;
+  osmEditorState.pendingLon = lng;
+  osmEditorState.editingPoi = null; // New POI
+
+  const status = document.getElementById('loginStatus');
+  if (status) {
+    status.textContent = isEl
+      ? `📍 Νέο POI: ${lat.toFixed(5)}, ${lng.toFixed(5)}`
+      : `📍 New POI: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  }
+};
+
+// Make available globally for app.js click routing
+window.appState_onMapClick_osmEditor = appState_onMapClick_osmEditor;
+
+// Cleanup
+window._osm_editorCleanup = function () {
+  if (window.appStateRef?.map) {
+    osmEditorState.editingMarkers.forEach(m => window.appStateRef.map.removeLayer(m));
+  }
+  osmEditorState.editingMarkers = [];
+  osmEditorState.editingPoi = null;
+};
+
 window.initOsmEditor = initOsmEditor;
-window.safeOverpassFetch = safeOverpassFetch;
-window.escapeXml = escapeXml;
-window.downloadFile = downloadFile;

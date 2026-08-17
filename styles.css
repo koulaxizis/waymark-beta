@@ -47,6 +47,146 @@ html, body {
 }
 
 /* =========================================================
+   HEADER & FOOTER (Fix #9)
+   ========================================================= */
+
+#appHeader {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.75rem;
+  z-index: 1001;
+  flex-shrink: 0;
+}
+
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--fg);
+}
+
+.app-logo svg { width: 24px; height: 24px; }
+
+#appHeader .lang-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 0.3rem 0.5rem;
+  border-radius: 18px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+#appHeader .lang-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#appFooter {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  z-index: 1001;
+  font-size: 0.68rem;
+  color: var(--fg-muted);
+  flex-shrink: 0;
+}
+
+/* Adjust map to account for header/footer */
+#map {
+  position: absolute;
+  top: 44px;
+  bottom: 28px;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  background: var(--bg);
+}
+
+/* Adjust panels for header offset */
+.control-panel.top-left {
+  top: calc(44px + 0.5rem);
+}
+
+.control-panel.top-right {
+  top: calc(44px + 0.5rem);
+}
+
+.control-panel.bottom-right {
+  bottom: calc(28px + 0.5rem);
+}
+
+/* Adjust location button for footer */
+.location-button {
+  bottom: calc(28px + 50px);
+}
+
+/* Responsive header/footer */
+@media (max-width: 768px) {
+  #appHeader {
+    height: 40px;
+  }
+
+  #appFooter {
+    height: 24px;
+    font-size: 0.62rem;
+  }
+
+  #map {
+    top: 40px;
+    bottom: 24px;
+  }
+
+  .control-panel.top-left {
+    top: calc(40px + 0.5rem);
+  }
+
+  .control-panel.top-right {
+    top: calc(40px + 0.5rem);
+  }
+
+  .control-panel.bottom-right {
+    bottom: calc(24px + 0.5rem);
+  }
+
+  .location-button {
+    bottom: calc(24px + 50px);
+  }
+}
+
+/* =========================================================
+   FULLSCREEN MODE (Fix #10)
+   ========================================================= */
+
+.fullscreen {
+  position: fixed;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  margin: 0 !important;
+}
+
+/* =========================================================
    MAP
    ========================================================= */
 
@@ -55,6 +195,34 @@ html, body {
   inset: 0;
   z-index: 1;
   background: var(--bg);
+}
+
+.location-button {
+  position: absolute;
+  bottom: 80px;
+  left: 80px;
+  width: 44px;
+  height: 44px;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  cursor: pointer;
+  z-index: 1000;
+  transition: var(--transition);
+  box-shadow: 0 4px 16px var(--shadow);
+}
+
+.location-button:hover {
+  border-color: var(--accent);
+  transform: scale(1.1);
+}
+
+.location-button:active {
+  transform: scale(0.95);
 }
 
 .leaflet-container {
@@ -347,10 +515,7 @@ html, body {
 }
 
 .module-content h2 {
-  font-size: 1rem;
-  font-weight: 700;
-  margin-bottom: 0.75rem;
-  color: var(--fg);
+  display: none; /* Fix #11 - Hide duplicate title */
 }
 
 .module-form {
@@ -380,8 +545,8 @@ html, body {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--fg);
-  padding: 0.5rem;
-  font-size: 0.85rem;
+  padding: 0.6rem; /* Increased padding */
+  font-size: 0.9rem; /* Increased font size */
   font-family: inherit;
   transition: var(--transition);
 }
@@ -394,6 +559,28 @@ html, body {
   box-shadow: 0 0 0 2px var(--accent-light);
 }
 
+/* Fix #15 - AutoComplete dropdown sizing */
+.autocomplete-dropdown {
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-top: 2px;
+  z-index: 1001;
+}
+
+.autocomplete-dropdown .dropdown-item {
+  padding: 0.5rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: var(--transition);
+}
+
+.autocomplete-dropdown .dropdown-item:hover {
+  background: var(--bg-tertiary);
+}
+
 /* =========================================================
    BUTTONS
    ========================================================= */
@@ -402,9 +589,9 @@ html, body {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   color: var(--fg);
-  padding: 0.6rem 1rem;
+  padding: 0.7rem 1rem;
   border-radius: var(--radius-sm);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-family: inherit;
   cursor: pointer;
   transition: var(--transition);
@@ -461,11 +648,18 @@ html, body {
   background: transparent;
   color: var(--danger);
   border-color: var(--danger);
+  padding: 0.5rem 1rem;
 }
 
 .btn-danger:hover {
   background: var(--danger);
   color: white;
+}
+
+.btn-sm {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  width: auto;
 }
 
 /* =========================================================
@@ -524,6 +718,50 @@ html, body {
 .result-item small {
   color: var(--fg-muted);
   font-size: 0.72rem;
+}
+
+/* Fix #12 - Pretty tag names in POI viewer */
+.poi-tags-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin-top: 0.5rem;
+}
+
+.poi-tags-table th,
+.poi-tags-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.poi-tags-table th {
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+
+/* POI action buttons */
+.poi-actions {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.poi-actions button {
+  flex: 1;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+/* Note description styling */
+.note-description {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem;
+  margin: 0.5rem 0;
+  font-size: 0.82rem;
+  color: var(--fg-muted);
 }
 
 /* =========================================================
@@ -635,6 +873,11 @@ small {
   .module-toggle-label {
     font-size: 0.85rem;
   }
+
+  .location-button {
+    bottom: 80px;
+    left: 20px;
+  }
 }
 
 @media (max-width: 400px) {
@@ -645,5 +888,13 @@ small {
 
   .control-panel.top-right {
     width: 130px;
+  }
+
+  .location-button {
+    bottom: 70px;
+    left: 15px;
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
   }
 }

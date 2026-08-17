@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  const isEl = getCurrentLang() === 'el';
+  let isEl = getCurrentLang() === 'el';
 
   // Shared app state
   const appState = {
@@ -15,6 +15,7 @@
     activeModuleId: null,
     currentTileLayer: null,
     geolocationWatch: null,
+    locationMarker: null,
   };
 
   // Module definitions
@@ -42,11 +43,14 @@
 
   function init() {
     initMap();
-    initLayers();
-    initModuleToggles();
     initLayerControls();
+    initModuleToggles();
     initMapClickHandler();
+    initLocationButton();
     registerServiceWorker();
+
+    // Apply translations
+    applyAppTranslations();
 
     // Hide loading overlay
     const overlay = document.getElementById('loadingOverlay');
@@ -87,9 +91,18 @@
     }
 
     appState.map.on('locationfound', (e) => {
-      L.circleMarker([e.latitude, e.longitude], {
-        radius: 8, fillColor: '#6d4aff', color: 'white', weight: 2, fillOpacity: 1
-      }).addTo(appState.map).bindPopup(isEl ? 'Εδώ είσαι!' : 'You are here!').openPopup();
+      if (appState.locationMarker) {
+        appState.map.removeLayer(appState.locationMarker);
+      }
+      appState.locationMarker = L.circleMarker([e.latitude, e.longitude], {
+        radius: 10,
+        fillColor: '#6d4aff',
+        color: 'white',
+        weight: 2,
+        fillOpacity: 0.8,
+      }).addTo(appState.map).bindPopup(
+        isEl ? '📍 Εδώ είσαι!' : '📍 You are here!'
+      ).openPopup();
     });
 
     appState.map.on('locationerror', () => {
@@ -98,12 +111,62 @@
   }
 
   // =======================================================
-  // Layer Controls
+  // Location Button (Fix #7)
   // =======================================================
 
-  function initLayers() {
-    // Nothing special, handled by initLayerControls
+  function initLocationButton() {
+    const locateBtn = document.createElement('div');
+    locateBtn.className = 'location-button';
+    locateBtn.innerHTML = '📍';
+    locateBtn.title = isEl ? 'Τρέχουσα θέση' : 'Current location';
+    document.getElementById('map').appendChild(locateBtn);
+
+    locateBtn.addEventListener('click', () => {
+      if (navigator.geolocation) {
+        // Brief visual feedback
+        locateBtn.style.background = 'var(--accent)';
+        locateBtn.style.color = 'white';
+
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            appState.map.setView([lat, lon], 15);
+
+            if (appState.locationMarker) {
+              appState.map.removeLayer(appState.locationMarker);
+            }
+            appState.locationMarker = L.circleMarker([lat, lon], {
+              radius: 10,
+              fillColor: '#6d4aff',
+              color: 'white',
+              weight: 2,
+              fillOpacity: 0.8,
+            }).addTo(appState.map).bindPopup(
+              isEl ? '📍 Εδώ είσαι!' : '📍 You are here!'
+            ).openPopup();
+
+            // Reset button
+            locateBtn.style.background = '';
+            locateBtn.style.color = '';
+          },
+          (err) => {
+            console.error('Geolocation error:', err);
+            alert(isEl
+              ? 'Δεν ήταν δυνατός ο εντοπισμός της θέσης σου.'
+              : 'Could not determine your location.');
+            locateBtn.style.background = '';
+            locateBtn.style.color = '';
+          },
+          { timeout: 10000, enableHighAccuracy: true }
+        );
+      }
+    });
   }
+
+  // =======================================================
+  // Layer Controls
+  // =======================================================
 
   function initLayerControls() {
     const btns = document.querySelectorAll('.layer-btn');
@@ -134,7 +197,7 @@
   }
 
   // =======================================================
-  // Module Toggles
+  // Module Toggles (Fix #1 - Minimized on mobile)
   // =======================================================
 
   function initModuleToggles() {
@@ -169,6 +232,10 @@
       wrapper.appendChild(toggle);
       container.appendChild(wrapper);
     });
+
+    // Set panel titles
+    document.getElementById('modulesTitle').textContent = isEl ? 'Μονάδες' : 'Modules';
+    document.getElementById('layersTitle').textContent = isEl ? 'Επίπεδα' : 'Layers';
   }
 
   function activateModule(moduleId) {
@@ -198,13 +265,17 @@
     panel.classList.add('active');
     content.innerHTML = '';
 
-    // Initialize module
+    // Initialize module (NO additional title in content — Fix #11)
     initFn(appState.map, content, appState);
   }
 
   function deactivateModule(moduleId) {
     // Run cleanup if exists
     const cleanupKey = '_' + moduleId.replace(/-/g, '_') + 'Cleanup';
+    if (typeof window[cleanupKey] === 'function') {
+      window[cleanupKey]();
+    }
+    // Also check appState-level cleanup
     if (typeof appState[cleanupKey] === 'function') {
       appState[cleanupKey]();
       delete appState[cleanupKey];
@@ -237,8 +308,22 @@
 
       if (typeof appState[handlerKey] === 'function') {
         appState[handlerKey](e.latlng.lat, e.latlng.lng);
+      } else if (typeof window[handlerKey] === 'function') {
+        window[handlerKey](e.latlng.lat, e.latlng.lng, appState.map, appState);
       }
     });
+  }
+
+  // =======================================================
+  // Translations (apply to static elements)
+  // =======================================================
+
+  function applyAppTranslations() {
+    // Loading text
+    const loadingText = document.getElementById('loadingText');
+    if (loadingText) {
+      loadingText.textContent = isEl ? 'Φόρτωση Waymark...' : 'Loading Waymark...';
+    }
   }
 
   // =======================================================
@@ -256,17 +341,25 @@
   }
 
   // =======================================================
-  // Close Module Button
+  // DOMContentLoaded — Bootstrap
   // =======================================================
 
   document.addEventListener('DOMContentLoaded', () => {
+    // Fix #1 - On mobile, start minimized
+    const isMobile = window.innerWidth <= 768;
+    const moduleBody = document.getElementById('moduleToggles');
+    if (isMobile && moduleBody) {
+      moduleBody.style.display = 'none';
+    }
+
+    // Close Module button
     const closeBtn = document.getElementById('closeModule');
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
         if (appState.activeModuleId) {
-          deactivateModule(appState.activeModuleId);
-          // Uncheck toggle
-          const cb = document.querySelector(`input[data-module-id="${appState.activeModuleId}"]`);
+          const prevId = appState.activeModuleId;
+          deactivateModule(prevId);
+          const cb = document.querySelector(`input[data-module-id="${prevId}"]`);
           if (cb) cb.checked = false;
         }
       });
@@ -283,11 +376,25 @@
       body.style.display = body.style.display === 'none' ? '' : 'none';
     });
 
-    // Try geolocation
+    // Language toggle in header
+    document.getElementById('langToggle')?.addEventListener('click', () => {
+      const current = getCurrentLang();
+      const newLang = current === 'en' ? 'el' : 'en';
+      if (typeof setLanguage === 'function') {
+        setLanguage(newLang);
+      } else {
+        sessionStorage.setItem('waymark_lang', newLang);
+      }
+      location.reload();
+    });
+
+    // Try geolocation (optional, non-blocking)
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          appState.map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+          if (appState.map) {
+            appState.map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+          }
         },
         () => {},
         { timeout: 5000 }
