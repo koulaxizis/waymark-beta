@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -32,6 +32,8 @@
   <script src="config.js"></script>
   <!-- i18n -->
   <script src="i18n.js"></script>
+  <!-- Theme manager — must load before app.js -->
+  <script src="theme.js"></script>
 
   <style>
     .loading-overlay {
@@ -72,6 +74,7 @@
       </a>
       <div class="header-actions">
         <button class="help-btn" id="helpBtn" title="Tutorial">?</button>
+        <button class="theme-btn" id="themeToggle" title="Toggle theme">🌙</button>
         <button class="lang-btn" id="langToggle">EN / EL</button>
       </div>
     </header>

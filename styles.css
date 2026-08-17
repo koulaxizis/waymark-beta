@@ -1,6 +1,7 @@
 /* =========================================================
    WAYMARK — Stylesheet
-   Dark mode exclusive. Mobile-first PWA layout.
+   Dark + Light theme via [data-theme].
+   Mobile-first PWA layout.
    ========================================================= */
 
 :root {
@@ -22,6 +23,28 @@
   --radius-sm: 4px;
   --header-h: 44px;
   --footer-h: 26px;
+  --overlay-bg: rgba(26, 26, 26, 0.8);
+}
+
+/* =========================================================
+   LIGHT THEME
+   ========================================================= */
+
+[data-theme="light"] {
+  --bg: #f0f0f3;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e8e8ec;
+  --fg: #1a1a2e;
+  --fg-muted: #6b6b80;
+  --accent: #6d4aff;
+  --accent-hover: #5a3de6;
+  --accent-light: rgba(109, 74, 255, 0.1);
+  --border: #d4d4dc;
+  --danger: #dc2626;
+  --warning: #d97706;
+  --success: #16a34a;
+  --shadow: rgba(0, 0, 0, 0.08);
+  --overlay-bg: rgba(255, 255, 255, 0.85);
 }
 
 * {
@@ -87,7 +110,8 @@ html, body {
 }
 
 #appHeader .lang-btn,
-#appHeader .help-btn {
+#appHeader .help-btn,
+#appHeader .theme-btn {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--fg);
@@ -105,14 +129,17 @@ html, body {
   font-size: 0.72rem;
 }
 
-#appHeader .help-btn {
+#appHeader .help-btn,
+#appHeader .theme-btn {
   width: 28px;
   height: 28px;
   font-size: 0.9rem;
+  padding: 0;
 }
 
 #appHeader .lang-btn:hover,
-#appHeader .help-btn:hover {
+#appHeader .help-btn:hover,
+#appHeader .theme-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -202,7 +229,7 @@ html, body {
 }
 
 .leaflet-control-scale-line {
-  background: rgba(26, 26, 26, 0.8);
+  background: var(--overlay-bg);
   color: var(--fg);
   border-color: var(--border);
 }
@@ -229,7 +256,7 @@ html, body {
 }
 
 .leaflet-control-attribution {
-  background: rgba(26, 26, 26, 0.8) !important;
+  background: var(--overlay-bg) !important;
   color: var(--fg-muted) !important;
   font-size: 0.65rem !important;
 }
@@ -719,6 +746,13 @@ small { font-size: 0.76rem; }
     width: 38px;
     height: 38px;
     font-size: 1.1rem;
+  }
+
+  #appHeader .help-btn,
+  #appHeader .theme-btn {
+    width: 26px;
+    height: 26px;
+    font-size: 0.82rem;
   }
 }
 

@@ -45,25 +45,43 @@
     initModuleToggles();
     initMapClickHandler();
     initLocationButton();
+    initThemeToggle();
     initHelpButton();
     registerServiceWorker();
     applyAppTranslations();
 
-    // Force Leaflet to recalculate size — multiple attempts
+    // Force Leaflet to recalculate size — multiple strategies
+    requestAnimationFrame(() => {
+      if (appState.map) appState.map.invalidateSize();
+    });
+
     setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 100);
     setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 500);
+    setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 1000);
 
-    // Also invalidate on window resize
+    // Invalidate on window resize
     window.addEventListener('resize', () => {
       if (appState.map) appState.map.invalidateSize();
     });
 
+    // Invalidate on orientation change (mobile)
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => {
+        if (appState.map) appState.map.invalidateSize();
+      }, 300);
+    });
+
+    // Remove loading overlay then invalidate
     const overlay = document.getElementById('loadingOverlay');
     if (overlay) {
       overlay.style.opacity = '0';
       setTimeout(() => {
         overlay.style.display = 'none';
         if (appState.map) appState.map.invalidateSize();
+        // One more after the overlay is fully gone
+        requestAnimationFrame(() => {
+          if (appState.map) appState.map.invalidateSize();
+        });
       }, 300);
     }
   }
@@ -83,16 +101,20 @@
     appState.map = L.map(mapEl, {
       zoomControl: false,
       attributionControl: true,
+      fadeAnimation: true,
+      zoomAnimation: true,
     }).setView([lat, lon], zoom);
 
     L.control.zoom({ position: 'bottomleft' }).addTo(appState.map);
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(appState.map);
 
+    // Add default tile layer
     const defaultLayer = cfg.TILE_LAYERS?.standard;
     if (defaultLayer) {
       appState.currentTileLayer = L.tileLayer(defaultLayer.url, {
         attribution: defaultLayer.attribution,
         maxZoom: defaultLayer.maxZoom,
+        crossOrigin: true,
       }).addTo(appState.map);
     }
 
@@ -119,11 +141,12 @@
   // =======================================================
 
   function initLocationButton() {
-    const locateBtn = document.createElement('div');
+    const locateBtn = document.createElement('button');
     locateBtn.className = 'location-button';
     locateBtn.innerHTML = '📍';
     locateBtn.title = isEl ? 'Τρέχουσα θέση' : 'Current location';
-    document.getElementById('map').appendChild(locateBtn);
+    locateBtn.type = 'button';
+    document.getElementById('map').parentElement.appendChild(locateBtn);
 
     locateBtn.addEventListener('click', () => {
       if (navigator.geolocation) {
@@ -167,6 +190,45 @@
   }
 
   // =======================================================
+  // Theme Toggle
+  // =======================================================
+
+  function initThemeToggle() {
+    const themeBtn = document.getElementById('themeToggle');
+    if (!themeBtn) return;
+
+    function updateIcon() {
+      const current = (typeof getCurrentTheme === 'function')
+        ? getCurrentTheme()
+        : 'dark';
+      // Show the icon for what you'll switch TO
+      themeBtn.textContent = current === 'dark' ? '☀️' : '🌙';
+      themeBtn.title = current === 'dark'
+        ? (isEl ? 'Εναλλαγή σε φωτεινό' : 'Switch to light')
+        : (isEl ? 'Εναλλαγή σε σκοτεινό' : 'Switch to dark');
+    }
+
+    updateIcon();
+
+    themeBtn.addEventListener('click', () => {
+      if (typeof toggleTheme === 'function') {
+        toggleTheme();
+      }
+      updateIcon();
+
+      // Invalidate map size after theme change (layout may shift)
+      if (appState.map) {
+        requestAnimationFrame(() => {
+          appState.map.invalidateSize();
+        });
+        setTimeout(() => {
+          if (appState.map) appState.map.invalidateSize();
+        }, 200);
+      }
+    });
+  }
+
+  // =======================================================
   // Help Button (? → Tutorial)
   // =======================================================
 
@@ -175,10 +237,8 @@
     if (!helpBtn) return;
 
     helpBtn.addEventListener('click', () => {
-      // Activate tutorial module
       const cb = document.querySelector('input[data-module-id="tutorial"]');
       if (cb) {
-        // Deactivate any active module first
         if (appState.activeModuleId) {
           deactivateModule(appState.activeModuleId);
           const prevCb = document.querySelector(`input[data-module-id="${appState.activeModuleId}"]`);
@@ -188,7 +248,6 @@
         cb.checked = true;
         activateModule('tutorial');
 
-        // Start walkthrough after a brief delay
         setTimeout(() => {
           if (typeof window.startTutorialWalkthrough === 'function') {
             window.startTutorialWalkthrough();
@@ -210,7 +269,10 @@
         const cfg = window.WAYMARK_CONFIG || {};
         const layerDef = cfg.TILE_LAYERS?.[layerName];
 
-        if (!layerDef) return;
+        if (!layerDef) {
+          console.warn('Layer not found in config:', layerName);
+          return;
+        }
 
         if (appState.currentTileLayer) {
           appState.map.removeLayer(appState.currentTileLayer);
@@ -219,6 +281,7 @@
         appState.currentTileLayer = L.tileLayer(layerDef.url, {
           attribution: layerDef.attribution,
           maxZoom: layerDef.maxZoom,
+          crossOrigin: true,
         }).addTo(appState.map);
 
         btns.forEach(b => b.classList.remove('active'));
@@ -293,6 +356,11 @@
     content.innerHTML = '';
 
     initFn(appState.map, content, appState);
+
+    // Invalidate after panel appears (layout shift)
+    setTimeout(() => {
+      if (appState.map) appState.map.invalidateSize();
+    }, 100);
   }
 
   function deactivateModule(moduleId) {
@@ -400,7 +468,7 @@
       if (typeof setLanguage === 'function') {
         setLanguage(newLang);
       } else {
-        sessionStorage.setItem('waymark_lang', newLang);
+        localStorage.setItem('waymark_lang', newLang);
       }
       location.reload();
     });
