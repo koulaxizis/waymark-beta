@@ -6,15 +6,32 @@
 
 let poiMarkers = [];
 let selectedPoi = null;
-let mapRef = null;
-let appStateRef = null;
+let localMap = null;
+let localAppState = null;
 
 function initPoiViewer(map, container, appState) {
   const isEl = getCurrentLang() === 'el';
 
-  // Store references for async/map click handlers
-  mapRef = map;
-  appStateRef = appState;
+  // Store local references
+  localMap = map;
+  localAppState = appState;
+
+  // Attach map click handler to appState
+  localAppState.onMapClick_poiViewer = function(lat, lng) {
+    const isEl = getCurrentLang() === 'el';
+
+    if (this.poiMoveTargetId) {
+      const marker = poiMarkers.find(m => m.data?.id === this.poiMoveTargetId);
+      if (marker && localMap) {
+        marker.setLatLng([lat, lng]);
+        alert(isEl ? 'Μετακίνηση: Χρησιμοποίησε τον Editor για αποθήκευση.' : 'Move: Use Editor to save.');
+        this.poiMoveTargetId = null;
+      }
+    } else if (this.poiDeleteTargetId) {
+      alert(isEl ? 'Διαγραφή: Χρησιμοποίησε τον Editor για επιβεβαίωση.' : 'Delete: Use Editor to confirm.');
+      this.poiDeleteTargetId = null;
+    }
+  };
 
   container.innerHTML = `
     <div class="module-form">
@@ -35,18 +52,15 @@ function initPoiViewer(map, container, appState) {
 
   document.getElementById('fetchPOIs').addEventListener('click', () => {
     const category = document.getElementById('poiCategory').value;
-    if (mapRef) {
-      fetchPOIsInViewport(category, mapRef.getBounds());
-    }
+    fetchPOIsInViewport(category, localMap.getBounds());
   });
 }
 
 async function fetchPOIsInViewport(category, bounds) {
   const isEl = getCurrentLang() === 'el';
   
-  // Clear existing markers
   poiMarkers.forEach(m => {
-    if (mapRef) mapRef.removeLayer(m);
+    if (localMap) localMap.removeLayer(m);
   });
   poiMarkers = [];
 
@@ -73,7 +87,7 @@ async function fetchPOIsInViewport(category, bounds) {
       
       if (!lat || !lon) return;
 
-      const marker = L.marker([lat, lon]).addTo(mapRef);
+      const marker = L.marker([lat, lon]).addTo(localMap);
       marker.data = el;
       
       const typeName = el.tags?.name || el.tags?.['addr:street'] || '';
@@ -85,9 +99,9 @@ async function fetchPOIsInViewport(category, bounds) {
           <small>${mainTag}</small><br>
           <small style="color: var(--fg-muted)">${lat.toFixed(5)}, ${lon.toFixed(5)}</small>
           <div class="poi-actions" style="margin-top: 0.5rem;">
-            <button class="btn btn-sm" onclick="window.showPOIDetails(${el.id}, '${lat}', '${lon}')">${isEl ? '📋 Λεπτομέρειες' : '📋 Details'}</button>
-            <button class="btn btn-sm" onclick="window.prepareMovePOI(${el.id})">${isEl ? '✏️ Μετακίνηση' : '✏️ Move'}</button>
-            <button class="btn btn-sm" onclick="window.prepareDeletePOI(${el.id})">${isEl ? '🗑️ Διαγραφή' : '🗑️ Delete'}</button>
+            <button class="btn btn-sm" onclick="window.poiViewer_showDetails(${el.id}, '${lat}', '${lon}')">${isEl ? '📋 Λεπτομέρειες' : '📋 Details'}</button>
+            <button class="btn btn-sm" onclick="window.poiViewer_prepareMove(${el.id})">${isEl ? '✏️ Μετακίνηση' : '✏️ Move'}</button>
+            <button class="btn btn-sm" onclick="window.poiViewer_prepareDelete(${el.id})">${isEl ? '🗑️ Διαγραφή' : '🗑️ Delete'}</button>
           </div>
         </div>
       `;
@@ -102,7 +116,6 @@ async function fetchPOIsInViewport(category, bounds) {
   }
 }
 
-// Helper: Get readable tag name
 function getMainTagName(tags) {
   if (!tags) return 'Unknown';
   if (tags.amenity) return `Amenity: ${tags.amenity}`;
@@ -115,7 +128,6 @@ function getMainTagName(tags) {
   return Object.keys(tags)[0] || 'Unknown';
 }
 
-// Helper: Pretty tag names
 function getPrettiedTagName(rawKey) {
   const pretties = {
     'amenity': 'Amenity',
@@ -143,10 +155,9 @@ function getPrettiedTagName(rawKey) {
   return pretties[rawKey] || rawKey.replace(':', ': ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
-// Global functions for onclick handlers (Fix: Use window prefix)
-window.showPOIDetails = function(id, lat, lon) {
+window.poiViewer_showDetails = function(id, lat, lon) {
   const marker = poiMarkers.find(m => m.data?.id === parseInt(id));
-  if (!marker || !mapRef) return;
+  if (!marker || !localMap) return;
 
   const tags = marker.data.tags || {};
   const tagRows = Object.entries(tags)
@@ -163,9 +174,9 @@ window.showPOIDetails = function(id, lat, lon) {
         <tbody>${tagRows}</tbody>
       </table>
       <div class="poi-actions" style="margin-top: 0.5rem;">
-        <button class="btn btn-sm" onclick="window.closeDetails()">${isEl ? '❌ Κλείσιμο' : '❌ Close'}</button>
-        <button class="btn btn-sm" onclick="window.prepareMovePOI(${id})">${isEl ? '✏️ Μετακίνηση' : '✏️ Move'}</button>
-        <button class="btn btn-sm" onclick="window.prepareDeletePOI(${id})">${isEl ? '🗑️ Διαγραφή' : '🗑️ Delete'}</button>
+        <button class="btn btn-sm" onclick="window.poiViewer_closeDetails()">${isEl ? '❌ Κλείσιμο' : '❌ Close'}</button>
+        <button class="btn btn-sm" onclick="window.poiViewer_prepareMove(${id})">${isEl ? '✏️ Μετακίνηση' : '✏️ Move'}</button>
+        <button class="btn btn-sm" onclick="window.poiViewer_prepareDelete(${id})">${isEl ? '🗑️ Διαγραφή' : '🗑️ Delete'}</button>
       </div>
     </div>
   `;
@@ -174,73 +185,44 @@ window.showPOIDetails = function(id, lat, lon) {
   marker.openPopup();
 };
 
-window.closeDetails = function() {
-  // Just close any open popups
-  if (mapRef && mapRef._popup) {
-    mapRef.closePopup();
+window.poiViewer_closeDetails = function() {
+  if (localMap && localMap._popup) {
+    localMap.closePopup();
   }
 };
 
-// Prepare move POI (sets flag in appState for next click)
-window.prepareMovePOI = function(id) {
-  if (!appStateRef) return;
+window.poiViewer_prepareMove = function(id) {
+  if (!localAppState) return;
   
-  const marker = poiMarkers.find(m => m.data?.id === parseInt(id));
-  if (!marker) return;
-
   const isEl = getCurrentLang() === 'el';
   const msg = isEl 
-    ? 'Κάνε κλικ στον χάρτη για νέα θέση. Πάτα ESC για ακύρωση.'
-    : 'Click on map for new position. Press ESC to cancel.';
+    ? 'Κάνε κλικ στον χάρτη για νέα θέση.'
+    : 'Click on map for new position.';
   
   alert(msg);
-  appStateRef.poiMoveTargetId = id;
+  localAppState.poiMoveTargetId = id;
 };
 
-// Prepare delete POI
-window.prepareDeletePOI = function(id) {
-  if (!appStateRef) return;
-
-  const marker = poiMarkers.find(m => m.data?.id === parseInt(id));
-  if (!marker) return;
+window.poiViewer_prepareDelete = function(id) {
+  if (!localAppState) return;
 
   const isEl = getCurrentLang() === 'el';
-  const confirmed = confirm(isEl 
-    ? 'Επιβεβαίωση διαγραφής;'
-    : 'Confirm deletion?');
+  const confirmed = confirm(isEl ? 'Επιβεβαίωση διαγραφής;' : 'Confirm deletion?');
   
   if (confirmed) {
-    appStateRef.poiDeleteTargetId = id;
-    alert(isEl ? 'Κάνε κλικ στον χάρτη για επιβεβαίωση διαγραφής.' : 'Click on map to confirm deletion.');
+    localAppState.poiDeleteTargetId = id;
+    alert(isEl ? 'Κάνε κλικ στον χάρτη για επιβεβαίωση.' : 'Click on map to confirm.');
   }
 };
 
-// Fix: Define handler AFTER appStateRef is set (inside initPoiViewer callback)
-appState.onMapClick_poiViewer = function(lat, lng) {
-  const isEl = getCurrentLang() === 'el';
-
-  if (this.poiMoveTargetId) {
-    const marker = poiMarkers.find(m => m.data?.id === this.poiMoveTargetId);
-    if (marker && mapRef) {
-      marker.setLatLng([lat, lng]);
-      alert(isEl ? 'Μετακίνηση: Χρησιμοποίησε τον Editor για αποθήκευση αλλαγών.' : 'Move: Use Editor to save changes.');
-      this.poiMoveTargetId = null;
-    }
-  } else if (this.poiDeleteTargetId) {
-    alert(isEl ? 'Διαγραφή: Χρησιμοποίησε τον Editor για επιβεβαίωση.' : 'Delete: Use Editor to confirm deletion.');
-    this.poiDeleteTargetId = null;
-  }
-};
-
-// Cleanup function
 window._poi_viewerCleanup = function() {
-  if (mapRef) {
-    poiMarkers.forEach(m => mapRef.removeLayer(m));
+  if (localMap) {
+    poiMarkers.forEach(m => localMap.removeLayer(m));
   }
   poiMarkers = [];
   selectedPoi = null;
-  mapRef = null;
-  appStateRef = null;
+  localMap = null;
+  localAppState = null;
 };
 
 window.initPoiViewer = initPoiViewer;

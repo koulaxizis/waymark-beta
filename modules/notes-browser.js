@@ -1,20 +1,72 @@
 /* =========================================================
    WAYMARK — Notes Browser Module
    View, create, and resolve OSM notes.
-   Shows note description when clicked (Fix #6).
+   Shows note description when clicked.
    ========================================================= */
 
 let notesMarkers = [];
-let mapRef = null;
-let appStateRef = null;
+let nb_localMap = null;
+let nb_localAppState = null;
 
 function initNotesBrowser(map, container, appState) {
   const isEl = getCurrentLang() === 'el';
 
-  // Store references for async/map click handlers
-  mapRef = map;
-  appStateRef = appState;
+  nb_localMap = map;
+  nb_localAppState = appState;
   window.appStateRef = appState;
+
+  // Attach map click handler to appState
+  nb_localAppState.onMapClick_notesBrowser = function(lat, lng) {
+    const isEl = getCurrentLang() === 'el';
+
+    if (this.notes_createPending) {
+      const text = prompt(isEl ? 'Περιγραφή προβλήματος:' : 'Problem description:');
+      if (!text) {
+        this.notes_createPending = false;
+        return;
+      }
+
+      const proxyUrl = WAYMARK_CONFIG.PROXY_URL;
+      const token = sessionStorage.getItem('osm_access_token');
+
+      if (!token) {
+        alert(isEl
+          ? 'Πρέπει να συνδεθείς πρώτα (OSM Editor → Login).'
+          : 'You need to log in first (OSM Editor → Login).');
+        this.notes_createPending = false;
+        return;
+      }
+
+      const formData = new URLSearchParams();
+      formData.append('lat', lat);
+      formData.append('lon', lng);
+      formData.append('text', text);
+
+      fetch(proxyUrl + '/notes', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString(),
+      })
+        .then(res => {
+          if (!res.ok) throw new Error('Failed to create note');
+          return res.json();
+        })
+        .then(data => {
+          alert(isEl ? '✅ Η σημείωση δημιουργήθηκε!' : '✅ Note created!');
+          fetchNotesInViewport(nb_localMap);
+        })
+        .catch(err => {
+          console.error('Create note error:', err);
+          alert(isEl ? 'Σφάλμα δημιουργίας σημείωσης.' : 'Error creating note.');
+        })
+        .finally(() => {
+          this.notes_createPending = false;
+        });
+    }
+  };
 
   container.innerHTML = `
     <div class="module-form">
@@ -24,14 +76,14 @@ function initNotesBrowser(map, container, appState) {
   `;
 
   document.getElementById('fetchNotesBtn').addEventListener('click', () => {
-    if (mapRef) {
-      fetchNotesInViewport(mapRef);
+    if (nb_localMap) {
+      fetchNotesInViewport(nb_localMap);
     }
   });
 
   document.getElementById('createNoteBtn').addEventListener('click', () => {
-    if (mapRef && appStateRef) {
-      createNewNote(mapRef, appStateRef);
+    if (nb_localMap && nb_localAppState) {
+      createNewNote(nb_localMap, nb_localAppState);
     }
   });
 }
@@ -39,7 +91,6 @@ function initNotesBrowser(map, container, appState) {
 async function fetchNotesInViewport(map) {
   const isEl = getCurrentLang() === 'el';
 
-  // Clear existing markers
   notesMarkers.forEach(m => map.removeLayer(m));
   notesMarkers = [];
 
@@ -47,7 +98,6 @@ async function fetchNotesInViewport(map) {
   const southWest = bounds.getSouthWest();
   const northEast = bounds.getNorthEast();
 
-  // OSM Notes API supports CORS for GET requests
   const url = `${WAYMARK_CONFIG.OSM_API_URL}/api/0.6/notes.json?bbox=${southWest.lon},${southWest.lat},${northEast.lon},${northEast.lat}&limit=100`;
 
   try {
@@ -56,7 +106,7 @@ async function fetchNotesInViewport(map) {
     const data = await response.json();
 
     if (!data.features || data.features.length === 0) {
-      alert(isEl ? 'Δεν βρέθηκαν σημειώσεις στην περιοχή.' : 'No notes found in this area.');
+      alert(isEl ? 'Δεν βρέθηκαν σημειώσεις στην περιοχή.' : 'No notes found.');
       return;
     }
 
@@ -137,68 +187,13 @@ function createNewNote(map, appState) {
   appState.notes_createPending = true;
 }
 
-// Fix: Define handler using appState passed via init
-appState.onMapClick_notesBrowser = function (lat, lng) {
-  const isEl = getCurrentLang() === 'el';
-  const map = this.map || mapRef;
-
-  if (this.notes_createPending) {
-    const text = prompt(isEl ? 'Περιγραφή προβλήματος:' : 'Problem description:');
-    if (!text) {
-      this.notes_createPending = false;
-      return;
-    }
-
-    const proxyUrl = WAYMARK_CONFIG.PROXY_URL;
-    const token = sessionStorage.getItem('osm_access_token');
-
-    if (!token) {
-      alert(isEl
-        ? 'Πρέπει να συνδεθείς πρώτα (OSM Editor → Login).'
-        : 'You need to log in first (OSM Editor → Login).');
-      this.notes_createPending = false;
-      return;
-    }
-
-    const formData = new URLSearchParams();
-    formData.append('lat', lat);
-    formData.append('lon', lng);
-    formData.append('text', text);
-
-    fetch(proxyUrl + '/notes', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString(),
-    })
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to create note');
-        return res.json();
-      })
-      .then(data => {
-        alert(isEl ? '✅ Η σημείωση δημιουργήθηκε!' : '✅ Note created!');
-        fetchNotesInViewport(map);
-      })
-      .catch(err => {
-        console.error('Create note error:', err);
-        alert(isEl ? 'Σφάλμα δημιουργίας σημείωσης.' : 'Error creating note.');
-      })
-      .finally(() => {
-        this.notes_createPending = false;
-      });
-  }
-};
-
-// Cleanup
 window._notes_browserCleanup = function () {
-  if (mapRef) {
-    notesMarkers.forEach(m => mapRef.removeLayer(m));
+  if (nb_localMap) {
+    notesMarkers.forEach(m => nb_localMap.removeLayer(m));
   }
   notesMarkers = [];
-  mapRef = null;
-  appStateRef = null;
+  nb_localMap = null;
+  nb_localAppState = null;
 };
 
 window.initNotesBrowser = initNotesBrowser;
