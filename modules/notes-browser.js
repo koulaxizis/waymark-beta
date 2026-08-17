@@ -5,9 +5,16 @@
    ========================================================= */
 
 let notesMarkers = [];
+let mapRef = null;
+let appStateRef = null;
 
 function initNotesBrowser(map, container, appState) {
   const isEl = getCurrentLang() === 'el';
+
+  // Store references for async/map click handlers
+  mapRef = map;
+  appStateRef = appState;
+  window.appStateRef = appState;
 
   container.innerHTML = `
     <div class="module-form">
@@ -17,11 +24,15 @@ function initNotesBrowser(map, container, appState) {
   `;
 
   document.getElementById('fetchNotesBtn').addEventListener('click', () => {
-    fetchNotesInViewport(map);
+    if (mapRef) {
+      fetchNotesInViewport(mapRef);
+    }
   });
 
   document.getElementById('createNoteBtn').addEventListener('click', () => {
-    createNewNote(map, appState);
+    if (mapRef && appStateRef) {
+      createNewNote(mapRef, appStateRef);
+    }
   });
 }
 
@@ -65,7 +76,6 @@ async function fetchNotesInViewport(map) {
       }).addTo(map);
       marker.noteData = props;
 
-      // Fix #6: Full description + all comments in popup
       const status = getStatusText(props.status, isEl);
       const date = props.date_created ? new Date(props.date_created).toLocaleDateString() : '';
       
@@ -124,29 +134,29 @@ function createNewNote(map, appState) {
   alert(isEl
     ? 'Κάνε κλικ στον χάρτη για να δημιουργήσεις σημείωση.'
     : 'Click on map to create a note.');
-  appState.createNotePending = true;
+  appState.notes_createPending = true;
 }
 
-// Handle map click for creating note
+// Fix: Define handler using appState passed via init
 appState.onMapClick_notesBrowser = function (lat, lng) {
   const isEl = getCurrentLang() === 'el';
+  const map = this.map || mapRef;
 
-  if (appState.createNotePending) {
+  if (this.notes_createPending) {
     const text = prompt(isEl ? 'Περιγραφή προβλήματος:' : 'Problem description:');
     if (!text) {
-      delete appState.createNotePending;
+      this.notes_createPending = false;
       return;
     }
 
-    // Submit note via proxy
-    const proxyUrl = `${WAYMARK_CONFIG.PROXY_URL}/notes`;
+    const proxyUrl = WAYMARK_CONFIG.PROXY_URL;
     const token = sessionStorage.getItem('osm_access_token');
 
     if (!token) {
       alert(isEl
         ? 'Πρέπει να συνδεθείς πρώτα (OSM Editor → Login).'
         : 'You need to log in first (OSM Editor → Login).');
-      delete appState.createNotePending;
+      this.notes_createPending = false;
       return;
     }
 
@@ -155,7 +165,7 @@ appState.onMapClick_notesBrowser = function (lat, lng) {
     formData.append('lon', lng);
     formData.append('text', text);
 
-    fetch(proxyUrl, {
+    fetch(proxyUrl + '/notes', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -169,24 +179,26 @@ appState.onMapClick_notesBrowser = function (lat, lng) {
       })
       .then(data => {
         alert(isEl ? '✅ Η σημείωση δημιουργήθηκε!' : '✅ Note created!');
-        fetchNotesInViewport(window.appStateRef?.map || map);
+        fetchNotesInViewport(map);
       })
       .catch(err => {
         console.error('Create note error:', err);
         alert(isEl ? 'Σφάλμα δημιουργίας σημείωσης.' : 'Error creating note.');
       })
       .finally(() => {
-        delete appState.createNotePending;
+        this.notes_createPending = false;
       });
   }
 };
 
 // Cleanup
 window._notes_browserCleanup = function () {
-  notesMarkers.forEach(m => {
-    if (window.appStateRef?.map) window.appStateRef.map.removeLayer(m);
-  });
+  if (mapRef) {
+    notesMarkers.forEach(m => mapRef.removeLayer(m));
+  }
   notesMarkers = [];
+  mapRef = null;
+  appStateRef = null;
 };
 
 window.initNotesBrowser = initNotesBrowser;
