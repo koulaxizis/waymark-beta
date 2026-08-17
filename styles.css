@@ -44,17 +44,15 @@ html, body {
   height: 100vh;
   height: 100dvh;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 /* =========================================================
-   HEADER & FOOTER (Fix #9)
+   HEADER
    ========================================================= */
 
 #appHeader {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
   height: 44px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
@@ -62,7 +60,7 @@ html, body {
   align-items: center;
   justify-content: space-between;
   padding: 0 0.75rem;
-  z-index: 1001;
+  z-index: 1100;
   flex-shrink: 0;
 }
 
@@ -78,7 +76,7 @@ html, body {
 
 .app-logo svg { width: 24px; height: 24px; }
 
-#appHeader .lang-btn {
+.header-lang-btn {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--fg);
@@ -87,147 +85,80 @@ html, body {
   cursor: pointer;
   font-size: 0.72rem;
   font-weight: 600;
+  transition: var(--transition);
 }
 
-#appHeader .lang-btn:hover {
+.header-lang-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
 
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
 #appFooter {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 28px;
+  height: 26px;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  z-index: 1001;
-  font-size: 0.68rem;
+  z-index: 1100;
+  font-size: 0.65rem;
   color: var(--fg-muted);
   flex-shrink: 0;
 }
 
-/* Adjust map to account for header/footer */
-#map {
-  position: absolute;
-  top: 44px;
-  bottom: 28px;
-  left: 0;
-  right: 0;
-  z-index: 1;
-  background: var(--bg);
-}
-
-/* Adjust panels for header offset */
-.control-panel.top-left {
-  top: calc(44px + 0.5rem);
-}
-
-.control-panel.top-right {
-  top: calc(44px + 0.5rem);
-}
-
-.control-panel.bottom-right {
-  bottom: calc(28px + 0.5rem);
-}
-
-/* Adjust location button for footer */
-.location-button {
-  bottom: calc(28px + 50px);
-}
-
-/* Responsive header/footer */
-@media (max-width: 768px) {
-  #appHeader {
-    height: 40px;
-  }
-
-  #appFooter {
-    height: 24px;
-    font-size: 0.62rem;
-  }
-
-  #map {
-    top: 40px;
-    bottom: 24px;
-  }
-
-  .control-panel.top-left {
-    top: calc(40px + 0.5rem);
-  }
-
-  .control-panel.top-right {
-    top: calc(40px + 0.5rem);
-  }
-
-  .control-panel.bottom-right {
-    bottom: calc(24px + 0.5rem);
-  }
-
-  .location-button {
-    bottom: calc(24px + 50px);
-  }
-}
-
 /* =========================================================
-   FULLSCREEN MODE (Fix #10)
-   ========================================================= */
-
-.fullscreen {
-  position: fixed;
-  inset: 0 !important;
-  width: 100vw !important;
-  height: 100dvh !important;
-  margin: 0 !important;
-}
-
-/* =========================================================
-   MAP
+   MAP — fills remaining space between header & footer
    ========================================================= */
 
 #map {
-  position: absolute;
-  inset: 0;
+  flex: 1;
+  position: relative;
   z-index: 1;
   background: var(--bg);
 }
 
 .location-button {
   position: absolute;
-  bottom: 80px;
-  left: 80px;
-  width: 44px;
-  height: 44px;
+  bottom: 16px;
+  left: 56px;
+  width: 42px;
+  height: 42px;
   background: var(--bg-secondary);
   border: 2px solid var(--border);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   cursor: pointer;
   z-index: 1000;
   transition: var(--transition);
-  box-shadow: 0 4px 16px var(--shadow);
+  box-shadow: 0 4px 12px var(--shadow);
 }
 
 .location-button:hover {
   border-color: var(--accent);
-  transform: scale(1.1);
+  transform: scale(1.08);
 }
 
 .location-button:active {
-  transform: scale(0.95);
+  transform: scale(0.92);
 }
+
+/* =========================================================
+   LEAFLET OVERRIDES
+   ========================================================= */
 
 .leaflet-container {
   background: var(--bg);
   font-family: inherit;
+  width: 100%;
+  height: 100%;
 }
 
 .leaflet-control-zoom a {
@@ -288,8 +219,8 @@ html, body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 4px 16px var(--shadow);
-  max-height: calc(100vh - 2rem);
-  max-height: calc(100dvh - 2rem);
+  max-height: calc(100vh - 100px);
+  max-height: calc(100dvh - 100px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -299,24 +230,24 @@ html, body {
 .control-panel.top-left {
   top: 0.5rem;
   left: 0.5rem;
-  width: 260px;
+  width: 250px;
   max-width: calc(100vw - 1rem);
 }
 
 .control-panel.top-right {
   top: 0.5rem;
   right: 0.5rem;
-  width: 180px;
+  width: 165px;
   max-width: calc(100vw - 1rem);
 }
 
 .control-panel.bottom-right {
   bottom: 0.5rem;
   right: 0.5rem;
-  width: 340px;
+  width: 330px;
   max-width: calc(100vw - 1rem);
-  max-height: 60vh;
-  max-height: 60dvh;
+  max-height: 55vh;
+  max-height: 55dvh;
   display: none;
 }
 
@@ -328,15 +259,15 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.6rem 0.75rem;
+  padding: 0.55rem 0.7rem;
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border);
-  min-height: 42px;
+  min-height: 40px;
   flex-shrink: 0;
 }
 
 .panel-header h2 {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 700;
   color: var(--fg);
   text-transform: uppercase;
@@ -348,11 +279,11 @@ html, body {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--fg-muted);
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 0.9rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -361,8 +292,7 @@ html, body {
   line-height: 1;
 }
 
-.panel-collapse:hover,
-.panel-close:hover {
+.panel-collapse:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -379,7 +309,6 @@ html, body {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Custom scrollbar */
 .panel-body::-webkit-scrollbar {
   width: 4px;
 }
@@ -402,18 +331,18 @@ html, body {
    ========================================================= */
 
 #moduleToggles {
-  padding: 0.4rem;
+  padding: 0.35rem;
 }
 
 .module-toggle-wrapper {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.2rem;
 }
 
 .module-toggle {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem;
+  padding: 0.45rem;
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: var(--transition);
@@ -430,10 +359,10 @@ html, body {
 }
 
 .module-toggle-slider {
-  width: 36px;
-  height: 20px;
+  width: 34px;
+  height: 18px;
   background: var(--border);
-  border-radius: 10px;
+  border-radius: 9px;
   position: relative;
   transition: var(--transition);
   flex-shrink: 0;
@@ -444,8 +373,8 @@ html, body {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   background: var(--fg-muted);
   border-radius: 50%;
   transition: var(--transition);
@@ -461,7 +390,7 @@ html, body {
 }
 
 .module-toggle-label {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   color: var(--fg);
   flex: 1;
 }
@@ -476,10 +405,10 @@ html, body {
    ========================================================= */
 
 #layerControls {
-  padding: 0.4rem;
+  padding: 0.35rem;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
 }
 
 .layer-btn {
@@ -487,8 +416,8 @@ html, body {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--fg);
-  padding: 0.5rem;
-  font-size: 0.82rem;
+  padding: 0.45rem;
+  font-size: 0.8rem;
   font-family: inherit;
   cursor: pointer;
   text-align: left;
@@ -511,11 +440,11 @@ html, body {
    ========================================================= */
 
 .module-content {
-  padding: 0.75rem;
+  padding: 0.7rem;
 }
 
 .module-content h2 {
-  display: none; /* Fix #11 - Hide duplicate title */
+  display: none;
 }
 
 .module-form {
@@ -525,19 +454,21 @@ html, body {
 }
 
 .form-group {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.4rem;
 }
 
 .form-group label {
   display: block;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   color: var(--fg-muted);
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.25rem;
   font-weight: 600;
 }
 
 .form-group input[type="text"],
 .form-group input[type="number"],
+.form-group input[type="tel"],
+.form-group input[type="url"],
 .form-group textarea,
 .form-group select {
   width: 100%;
@@ -545,8 +476,8 @@ html, body {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--fg);
-  padding: 0.6rem; /* Increased padding */
-  font-size: 0.9rem; /* Increased font size */
+  padding: 0.55rem;
+  font-size: 0.88rem;
   font-family: inherit;
   transition: var(--transition);
 }
@@ -559,28 +490,6 @@ html, body {
   box-shadow: 0 0 0 2px var(--accent-light);
 }
 
-/* Fix #15 - AutoComplete dropdown sizing */
-.autocomplete-dropdown {
-  max-height: 200px;
-  overflow-y: auto;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  margin-top: 2px;
-  z-index: 1001;
-}
-
-.autocomplete-dropdown .dropdown-item {
-  padding: 0.5rem;
-  cursor: pointer;
-  font-size: 0.85rem;
-  transition: var(--transition);
-}
-
-.autocomplete-dropdown .dropdown-item:hover {
-  background: var(--bg-tertiary);
-}
-
 /* =========================================================
    BUTTONS
    ========================================================= */
@@ -589,15 +498,15 @@ html, body {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   color: var(--fg);
-  padding: 0.7rem 1rem;
+  padding: 0.6rem 0.9rem;
   border-radius: var(--radius-sm);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-family: inherit;
   cursor: pointer;
   transition: var(--transition);
   text-align: center;
   width: 100%;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.4rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -610,7 +519,7 @@ html, body {
 }
 
 .btn:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
 .btn:disabled {
@@ -635,10 +544,6 @@ html, body {
   border-color: var(--success);
 }
 
-.btn-success:disabled:hover {
-  filter: none;
-}
-
 .btn-secondary {
   background: var(--bg);
   color: var(--fg);
@@ -648,7 +553,7 @@ html, body {
   background: transparent;
   color: var(--danger);
   border-color: var(--danger);
-  padding: 0.5rem 1rem;
+  padding: 0.45rem 0.8rem;
 }
 
 .btn-danger:hover {
@@ -657,8 +562,8 @@ html, body {
 }
 
 .btn-sm {
-  padding: 0.4rem 0.6rem;
-  font-size: 0.8rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.76rem;
   width: auto;
 }
 
@@ -667,13 +572,13 @@ html, body {
    ========================================================= */
 
 .login-badge {
-  font-size: 0.8rem;
-  padding: 0.5rem 0.75rem;
+  font-size: 0.78rem;
+  padding: 0.45rem 0.6rem;
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
   color: var(--fg-muted);
   text-align: center;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.4rem;
 }
 
 .login-badge.active {
@@ -689,17 +594,17 @@ html, body {
 .results-list {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
   overflow-y: auto;
-  max-height: 300px;
+  max-height: 280px;
 }
 
 .result-item {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 0.5rem 0.6rem;
-  font-size: 0.82rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: var(--transition);
 }
@@ -712,25 +617,28 @@ html, body {
 .result-item strong {
   color: var(--fg);
   display: block;
-  margin-bottom: 0.15rem;
+  margin-bottom: 0.1rem;
 }
 
 .result-item small {
   color: var(--fg-muted);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
 }
 
-/* Fix #12 - Pretty tag names in POI viewer */
+/* =========================================================
+   POI / NOTE EXTRAS
+   ========================================================= */
+
 .poi-tags-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.82rem;
-  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  margin-top: 0.4rem;
 }
 
 .poi-tags-table th,
 .poi-tags-table td {
-  padding: 0.4rem 0.5rem;
+  padding: 0.35rem 0.45rem;
   border-bottom: 1px solid var(--border);
   text-align: left;
 }
@@ -740,27 +648,23 @@ html, body {
   font-weight: 600;
 }
 
-/* POI action buttons */
 .poi-actions {
   display: flex;
-  gap: 0.25rem;
-  margin-top: 0.5rem;
+  gap: 0.2rem;
+  margin-top: 0.4rem;
 }
 
 .poi-actions button {
   flex: 1;
-  padding: 0.3rem 0.5rem;
-  font-size: 0.75rem;
 }
 
-/* Note description styling */
 .note-description {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 0.5rem;
-  margin: 0.5rem 0;
-  font-size: 0.82rem;
+  padding: 0.45rem;
+  margin: 0.4rem 0;
+  font-size: 0.8rem;
   color: var(--fg-muted);
 }
 
@@ -799,8 +703,8 @@ html, body {
 }
 
 .spinner-large {
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   border: 4px solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;
@@ -808,9 +712,9 @@ html, body {
 }
 
 #loadingText {
-  margin-top: 1rem;
+  margin-top: 0.8rem;
   color: var(--fg-muted);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 /* =========================================================
@@ -820,7 +724,7 @@ html, body {
 hr {
   border: none;
   border-top: 1px solid var(--border);
-  margin: 0.5rem 0;
+  margin: 0.4rem 0;
 }
 
 code {
@@ -832,27 +736,36 @@ code {
 }
 
 small {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
 }
 
 /* =========================================================
-   RESPONSIVE — Mobile adjustments
+   RESPONSIVE
    ========================================================= */
 
 @media (max-width: 768px) {
+  #appHeader {
+    height: 40px;
+  }
+
+  #appFooter {
+    height: 22px;
+    font-size: 0.58rem;
+  }
+
   .control-panel.top-left {
-    width: calc(100vw - 1rem);
-    max-width: 240px;
+    width: 210px;
+    max-width: calc(100vw - 1rem);
   }
 
   .control-panel.top-right {
-    width: 140px;
+    width: 130px;
   }
 
   .control-panel.bottom-right {
     width: calc(100vw - 1rem);
-    max-height: 50vh;
-    max-height: 50dvh;
+    max-height: 45vh;
+    max-height: 45dvh;
     bottom: 0;
     right: 0;
     left: 0;
@@ -861,40 +774,42 @@ small {
   }
 
   .panel-body {
-    max-height: 40vh;
-    max-height: 40dvh;
+    max-height: 35vh;
+    max-height: 35dvh;
   }
 
   .btn {
-    padding: 0.75rem 1rem;
-    font-size: 0.9rem;
+    padding: 0.7rem 0.9rem;
+    font-size: 0.88rem;
   }
 
   .module-toggle-label {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
   }
 
   .location-button {
-    bottom: 80px;
-    left: 20px;
+    bottom: 14px;
+    left: 48px;
+    width: 38px;
+    height: 38px;
+    font-size: 1.1rem;
   }
 }
 
 @media (max-width: 400px) {
   .control-panel.top-left {
-    width: calc(100vw - 1rem);
-    max-width: 200px;
+    width: 175px;
   }
 
   .control-panel.top-right {
-    width: 130px;
+    width: 115px;
   }
 
   .location-button {
-    bottom: 70px;
-    left: 15px;
-    width: 40px;
-    height: 40px;
-    font-size: 1.2rem;
+    bottom: 12px;
+    left: 44px;
+    width: 34px;
+    height: 34px;
+    font-size: 1rem;
   }
 }

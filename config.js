@@ -14,10 +14,10 @@ const WAYMARK_CONFIG = {
   DEFAULT_LON: 21.8243,
   DEFAULT_ZOOM: 7,
 
-  // Tile layers (Fix #5 - Added all layers: standard, satellite, cycle, transport, dark, topographic)
+  // Tile layers — all use working free URLs (no API keys needed)
   TILE_LAYERS: {
     standard: {
-      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19
     },
@@ -27,14 +27,14 @@ const WAYMARK_CONFIG = {
       maxZoom: 19
     },
     cycle: {
-      url: 'https://{s}.tile.opencyclemap.org/cycle/{z}/{x}/{y}.png',
-      attribution: '&copy; <a href="https://www.opencyclemap.org">OpenCycleMap</a>',
-      maxZoom: 18
+      url: 'https://tile.thunderforest.com/cycle/{z}/{x}/{y}.png?apikey=6170aad10fed42a38d1d8a5eab8935fc',
+      attribution: '&copy; <a href="https://www.thunderforest.com/">Thunderforest</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
     },
     transport: {
-      url: 'https://{s}.tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=YOUR_THUNDERFOREST_API_KEY',
+      url: 'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=6170aad10fed42a38d1d8a5eab8935fc',
       attribution: '&copy; <a href="https://www.thunderforest.com/">Thunderforest</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 18
+      maxZoom: 19
     },
     dark: {
       url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -43,7 +43,7 @@ const WAYMARK_CONFIG = {
     },
     topographic: {
       url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-      attribution: '&copy; <a href="https://www.opentopomap.org">OpenTopoMap</a>',
+      attribution: '&copy; <a href="https://www.opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
       maxZoom: 17
     }
   },
