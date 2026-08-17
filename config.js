@@ -1,5 +1,5 @@
 // =======================================================
-// Waymark Configuration
+// Waymark Configuration 
 // =======================================================
 
 window.WAYMARK_CONFIG = {
