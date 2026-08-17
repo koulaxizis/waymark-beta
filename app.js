@@ -45,18 +45,26 @@
     initModuleToggles();
     initMapClickHandler();
     initLocationButton();
+    initHelpButton();
     registerServiceWorker();
     applyAppTranslations();
 
-    // Fix: Force Leaflet to recalculate size after layout settles
-    setTimeout(() => {
+    // Force Leaflet to recalculate size — multiple attempts
+    setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 100);
+    setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 500);
+
+    // Also invalidate on window resize
+    window.addEventListener('resize', () => {
       if (appState.map) appState.map.invalidateSize();
-    }, 100);
+    });
 
     const overlay = document.getElementById('loadingOverlay');
     if (overlay) {
       overlay.style.opacity = '0';
-      setTimeout(() => overlay.style.display = 'none', 300);
+      setTimeout(() => {
+        overlay.style.display = 'none';
+        if (appState.map) appState.map.invalidateSize();
+      }, 300);
     }
   }
 
@@ -70,7 +78,9 @@
     const lon = cfg.DEFAULT_LON || 21.8243;
     const zoom = cfg.DEFAULT_ZOOM || 7;
 
-    appState.map = L.map('map', {
+    const mapEl = document.getElementById('map');
+
+    appState.map = L.map(mapEl, {
       zoomControl: false,
       attributionControl: true,
     }).setView([lat, lon], zoom);
@@ -105,7 +115,7 @@
   }
 
   // =======================================================
-  // Location Button (Fix #7)
+  // Location Button
   // =======================================================
 
   function initLocationButton() {
@@ -152,6 +162,38 @@
           },
           { timeout: 10000, enableHighAccuracy: true }
         );
+      }
+    });
+  }
+
+  // =======================================================
+  // Help Button (? → Tutorial)
+  // =======================================================
+
+  function initHelpButton() {
+    const helpBtn = document.getElementById('helpBtn');
+    if (!helpBtn) return;
+
+    helpBtn.addEventListener('click', () => {
+      // Activate tutorial module
+      const cb = document.querySelector('input[data-module-id="tutorial"]');
+      if (cb) {
+        // Deactivate any active module first
+        if (appState.activeModuleId) {
+          deactivateModule(appState.activeModuleId);
+          const prevCb = document.querySelector(`input[data-module-id="${appState.activeModuleId}"]`);
+          if (prevCb) prevCb.checked = false;
+        }
+
+        cb.checked = true;
+        activateModule('tutorial');
+
+        // Start walkthrough after a brief delay
+        setTimeout(() => {
+          if (typeof window.startTutorialWalkthrough === 'function') {
+            window.startTutorialWalkthrough();
+          }
+        }, 300);
       }
     });
   }

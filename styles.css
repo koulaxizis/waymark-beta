@@ -43,11 +43,10 @@ html, body {
 }
 
 #app {
+  position: relative;
   height: 100vh;
   height: 100dvh;
-  position: relative;
-  display: flex;
-  flex-direction: column;
+  overflow: hidden;
 }
 
 /* =========================================================
@@ -55,6 +54,10 @@ html, body {
    ========================================================= */
 
 #appHeader {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   height: var(--header-h);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
@@ -63,7 +66,6 @@ html, body {
   justify-content: space-between;
   padding: 0 0.75rem;
   z-index: 1100;
-  flex-shrink: 0;
 }
 
 .app-logo {
@@ -78,20 +80,39 @@ html, body {
 
 .app-logo svg { width: 24px; height: 24px; }
 
-/* Fix: match HTML class="lang-btn" */
-#appHeader .lang-btn {
+.header-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+#appHeader .lang-btn,
+#appHeader .help-btn {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--fg);
-  padding: 0.3rem 0.5rem;
   border-radius: 18px;
   cursor: pointer;
-  font-size: 0.72rem;
   font-weight: 600;
   transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-#appHeader .lang-btn:hover {
+#appHeader .lang-btn {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.72rem;
+}
+
+#appHeader .help-btn {
+  width: 28px;
+  height: 28px;
+  font-size: 0.9rem;
+}
+
+#appHeader .lang-btn:hover,
+#appHeader .help-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -101,6 +122,10 @@ html, body {
    ========================================================= */
 
 #appFooter {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
   height: var(--footer-h);
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
@@ -111,17 +136,18 @@ html, body {
   z-index: 1100;
   font-size: 0.65rem;
   color: var(--fg-muted);
-  flex-shrink: 0;
 }
 
 /* =========================================================
-   MAP — fills remaining space between header & footer
+   MAP — absolute positioned between header & footer
    ========================================================= */
 
 #map {
-  flex: 1 1 0;
-  min-height: 0;
-  position: relative;
+  position: absolute;
+  top: var(--header-h);
+  bottom: var(--footer-h);
+  left: 0;
+  right: 0;
   z-index: 1;
   background: var(--bg);
 }
@@ -223,8 +249,6 @@ html, body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 4px 16px var(--shadow);
-  max-height: calc(100vh - 100px);
-  max-height: calc(100dvh - 100px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -236,6 +260,8 @@ html, body {
   left: 0.5rem;
   width: 250px;
   max-width: calc(100vw - 1rem);
+  max-height: calc(100vh - var(--header-h) - var(--footer-h) - 1.5rem);
+  max-height: calc(100dvh - var(--header-h) - var(--footer-h) - 1.5rem);
 }
 
 .control-panel.top-right {
@@ -243,6 +269,8 @@ html, body {
   right: 0.5rem;
   width: 165px;
   max-width: calc(100vw - 1rem);
+  max-height: calc(100vh - var(--header-h) - var(--footer-h) - 1.5rem);
+  max-height: calc(100dvh - var(--header-h) - var(--footer-h) - 1.5rem);
 }
 
 .control-panel.bottom-right {
@@ -313,34 +341,17 @@ html, body {
   -webkit-overflow-scrolling: touch;
 }
 
-.panel-body::-webkit-scrollbar {
-  width: 4px;
-}
-
-.panel-body::-webkit-scrollbar-track {
-  background: var(--bg);
-}
-
-.panel-body::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
-}
-
-.panel-body::-webkit-scrollbar-thumb:hover {
-  background: var(--accent);
-}
+.panel-body::-webkit-scrollbar { width: 4px; }
+.panel-body::-webkit-scrollbar-track { background: var(--bg); }
+.panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.panel-body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
 /* =========================================================
    MODULE TOGGLES
    ========================================================= */
 
-#moduleToggles {
-  padding: 0.35rem;
-}
-
-.module-toggle-wrapper {
-  margin-bottom: 0.2rem;
-}
+#moduleToggles { padding: 0.35rem; }
+.module-toggle-wrapper { margin-bottom: 0.2rem; }
 
 .module-toggle {
   display: flex;
@@ -352,9 +363,7 @@ html, body {
   transition: var(--transition);
 }
 
-.module-toggle:hover {
-  background: var(--bg-tertiary);
-}
+.module-toggle:hover { background: var(--bg-tertiary); }
 
 .module-toggle input[type="checkbox"] {
   position: absolute;
@@ -384,10 +393,7 @@ html, body {
   transition: var(--transition);
 }
 
-.module-toggle input:checked + .module-toggle-slider {
-  background: var(--accent);
-}
-
+.module-toggle input:checked + .module-toggle-slider { background: var(--accent); }
 .module-toggle input:checked + .module-toggle-slider::after {
   transform: translateX(16px);
   background: white;
@@ -428,9 +434,7 @@ html, body {
   transition: var(--transition);
 }
 
-.layer-btn:hover {
-  border-color: var(--accent);
-}
+.layer-btn:hover { border-color: var(--accent); }
 
 .layer-btn.active {
   background: var(--accent);
@@ -443,13 +447,8 @@ html, body {
    MODULE CONTENT
    ========================================================= */
 
-.module-content {
-  padding: 0.7rem;
-}
-
-.module-content h2 {
-  display: none;
-}
+.module-content { padding: 0.7rem; }
+.module-content h2 { display: none; }
 
 .module-form {
   display: flex;
@@ -457,9 +456,7 @@ html, body {
   gap: 0.5rem;
 }
 
-.form-group {
-  margin-bottom: 0.4rem;
-}
+.form-group { margin-bottom: 0.4rem; }
 
 .form-group label {
   display: block;
@@ -517,24 +514,10 @@ html, body {
   gap: 0.3rem;
 }
 
-.btn:hover {
-  border-color: var(--accent);
-  background: var(--bg-secondary);
-}
-
-.btn:active {
-  transform: scale(0.97);
-}
-
-.btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.btn:disabled:hover {
-  border-color: var(--border);
-  background: var(--bg-tertiary);
-}
+.btn:hover { border-color: var(--accent); background: var(--bg-secondary); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:disabled:hover { border-color: var(--border); background: var(--bg-tertiary); }
 
 .btn-success {
   background: var(--success);
@@ -542,16 +525,10 @@ html, body {
   border-color: var(--success);
   font-weight: 600;
 }
+.btn-success:hover { filter: brightness(1.1); border-color: var(--success); }
+.btn-success:disabled:hover { filter: none; }
 
-.btn-success:hover {
-  filter: brightness(1.1);
-  border-color: var(--success);
-}
-
-.btn-secondary {
-  background: var(--bg);
-  color: var(--fg);
-}
+.btn-secondary { background: var(--bg); color: var(--fg); }
 
 .btn-danger {
   background: transparent;
@@ -559,17 +536,9 @@ html, body {
   border-color: var(--danger);
   padding: 0.45rem 0.8rem;
 }
+.btn-danger:hover { background: var(--danger); color: white; }
 
-.btn-danger:hover {
-  background: var(--danger);
-  color: white;
-}
-
-.btn-sm {
-  padding: 0.35rem 0.55rem;
-  font-size: 0.76rem;
-  width: auto;
-}
+.btn-sm { padding: 0.35rem 0.55rem; font-size: 0.76rem; width: auto; }
 
 /* =========================================================
    LOGIN BADGE
@@ -613,21 +582,9 @@ html, body {
   transition: var(--transition);
 }
 
-.result-item:hover {
-  border-color: var(--accent);
-  background: var(--bg-tertiary);
-}
-
-.result-item strong {
-  color: var(--fg);
-  display: block;
-  margin-bottom: 0.1rem;
-}
-
-.result-item small {
-  color: var(--fg-muted);
-  font-size: 0.7rem;
-}
+.result-item:hover { border-color: var(--accent); background: var(--bg-tertiary); }
+.result-item strong { color: var(--fg); display: block; margin-bottom: 0.1rem; }
+.result-item small { color: var(--fg-muted); font-size: 0.7rem; }
 
 /* =========================================================
    POI / NOTE EXTRAS
@@ -647,20 +604,10 @@ html, body {
   text-align: left;
 }
 
-.poi-tags-table th {
-  color: var(--fg-muted);
-  font-weight: 600;
-}
+.poi-tags-table th { color: var(--fg-muted); font-weight: 600; }
 
-.poi-actions {
-  display: flex;
-  gap: 0.2rem;
-  margin-top: 0.4rem;
-}
-
-.poi-actions button {
-  flex: 1;
-}
+.poi-actions { display: flex; gap: 0.2rem; margin-top: 0.4rem; }
+.poi-actions button { flex: 1; }
 
 .note-description {
   background: var(--bg);
@@ -686,9 +633,7 @@ html, body {
   margin: 0 auto;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* =========================================================
    LOADING OVERLAY
@@ -725,11 +670,7 @@ html, body {
    UTILITY
    ========================================================= */
 
-hr {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 0.4rem 0;
-}
+hr { border: none; border-top: 1px solid var(--border); margin: 0.4rem 0; }
 
 code {
   font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
@@ -739,9 +680,7 @@ code {
   border-radius: 3px;
 }
 
-small {
-  font-size: 0.76rem;
-}
+small { font-size: 0.76rem; }
 
 /* =========================================================
    RESPONSIVE
@@ -753,18 +692,10 @@ small {
     --footer-h: 22px;
   }
 
-  #appFooter {
-    font-size: 0.58rem;
-  }
+  #appFooter { font-size: 0.58rem; }
 
-  .control-panel.top-left {
-    width: 210px;
-    max-width: calc(100vw - 1rem);
-  }
-
-  .control-panel.top-right {
-    width: 130px;
-  }
+  .control-panel.top-left { width: 210px; max-width: calc(100vw - 1rem); }
+  .control-panel.top-right { width: 130px; }
 
   .control-panel.bottom-right {
     width: calc(100vw - 1rem);
@@ -777,19 +708,10 @@ small {
     border-radius: var(--radius) var(--radius) 0 0;
   }
 
-  .panel-body {
-    max-height: 35vh;
-    max-height: 35dvh;
-  }
+  .panel-body { max-height: 35vh; max-height: 35dvh; }
 
-  .btn {
-    padding: 0.7rem 0.9rem;
-    font-size: 0.88rem;
-  }
-
-  .module-toggle-label {
-    font-size: 0.82rem;
-  }
+  .btn { padding: 0.7rem 0.9rem; font-size: 0.88rem; }
+  .module-toggle-label { font-size: 0.82rem; }
 
   .location-button {
     bottom: 14px;
@@ -801,13 +723,8 @@ small {
 }
 
 @media (max-width: 400px) {
-  .control-panel.top-left {
-    width: 175px;
-  }
-
-  .control-panel.top-right {
-    width: 115px;
-  }
+  .control-panel.top-left { width: 175px; }
+  .control-panel.top-right { width: 115px; }
 
   .location-button {
     bottom: 12px;

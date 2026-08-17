@@ -59,7 +59,7 @@
 </head>
 <body>
   <div id="app">
-    <!-- Fix #9: Header restored -->
+    <!-- Header -->
     <header id="appHeader">
       <a href="index.html" class="app-logo">
         <svg viewBox="0 0 64 64" width="24" height="24">
@@ -70,7 +70,10 @@
         </svg>
         <span>Waymark</span>
       </a>
-      <button class="lang-btn" id="langToggle">EN / EL</button>
+      <div class="header-actions">
+        <button class="help-btn" id="helpBtn" title="Tutorial">?</button>
+        <button class="lang-btn" id="langToggle">EN / EL</button>
+      </div>
     </header>
 
     <!-- Map -->
@@ -110,7 +113,7 @@
       <div id="moduleContent" class="panel-body module-content"></div>
     </div>
 
-    <!-- Fix #9: Footer restored -->
+    <!-- Footer -->
     <footer id="appFooter">
       <span>Designed by Christos Koulaxizis</span>
       <span>•</span>
