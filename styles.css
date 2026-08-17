@@ -20,6 +20,8 @@
   --transition: all 0.2s ease;
   --radius: 8px;
   --radius-sm: 4px;
+  --header-h: 44px;
+  --footer-h: 26px;
 }
 
 * {
@@ -53,7 +55,7 @@ html, body {
    ========================================================= */
 
 #appHeader {
-  height: 44px;
+  height: var(--header-h);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -76,7 +78,8 @@ html, body {
 
 .app-logo svg { width: 24px; height: 24px; }
 
-.header-lang-btn {
+/* Fix: match HTML class="lang-btn" */
+#appHeader .lang-btn {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--fg);
@@ -88,7 +91,7 @@ html, body {
   transition: var(--transition);
 }
 
-.header-lang-btn:hover {
+#appHeader .lang-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -98,7 +101,7 @@ html, body {
    ========================================================= */
 
 #appFooter {
-  height: 26px;
+  height: var(--footer-h);
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
   display: flex;
@@ -116,7 +119,8 @@ html, body {
    ========================================================= */
 
 #map {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   position: relative;
   z-index: 1;
   background: var(--bg);
@@ -228,21 +232,21 @@ html, body {
 }
 
 .control-panel.top-left {
-  top: 0.5rem;
+  top: calc(var(--header-h) + 0.5rem);
   left: 0.5rem;
   width: 250px;
   max-width: calc(100vw - 1rem);
 }
 
 .control-panel.top-right {
-  top: 0.5rem;
+  top: calc(var(--header-h) + 0.5rem);
   right: 0.5rem;
   width: 165px;
   max-width: calc(100vw - 1rem);
 }
 
 .control-panel.bottom-right {
-  bottom: 0.5rem;
+  bottom: calc(var(--footer-h) + 0.5rem);
   right: 0.5rem;
   width: 330px;
   max-width: calc(100vw - 1rem);
@@ -744,12 +748,12 @@ small {
    ========================================================= */
 
 @media (max-width: 768px) {
-  #appHeader {
-    height: 40px;
+  :root {
+    --header-h: 40px;
+    --footer-h: 22px;
   }
 
   #appFooter {
-    height: 22px;
     font-size: 0.58rem;
   }
 
@@ -766,7 +770,7 @@ small {
     width: calc(100vw - 1rem);
     max-height: 45vh;
     max-height: 45dvh;
-    bottom: 0;
+    bottom: var(--footer-h);
     right: 0;
     left: 0;
     margin: 0 auto;

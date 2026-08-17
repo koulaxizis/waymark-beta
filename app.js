@@ -7,7 +7,6 @@
 
   let isEl = getCurrentLang() === 'el';
 
-  // Shared app state
   const appState = {
     map: null,
     mapMarkers: [],
@@ -18,7 +17,6 @@
     locationMarker: null,
   };
 
-  // Module definitions
   const MODULES = [
     { id: 'nominatim', name_key: 'module.nominatim', icon: '🔍', init: () => window.initNominatim },
     { id: 'poi-viewer', name_key: 'module.poi_viewer', icon: '📍', init: () => window.initPoiViewer },
@@ -48,11 +46,13 @@
     initMapClickHandler();
     initLocationButton();
     registerServiceWorker();
-
-    // Apply translations
     applyAppTranslations();
 
-    // Hide loading overlay
+    // Fix: Force Leaflet to recalculate size after layout settles
+    setTimeout(() => {
+      if (appState.map) appState.map.invalidateSize();
+    }, 100);
+
     const overlay = document.getElementById('loadingOverlay');
     if (overlay) {
       overlay.style.opacity = '0';
@@ -75,13 +75,9 @@
       attributionControl: true,
     }).setView([lat, lon], zoom);
 
-    // Add zoom control to bottom-left
     L.control.zoom({ position: 'bottomleft' }).addTo(appState.map);
-
-    // Add scale
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(appState.map);
 
-    // Default tile layer
     const defaultLayer = cfg.TILE_LAYERS?.standard;
     if (defaultLayer) {
       appState.currentTileLayer = L.tileLayer(defaultLayer.url, {
@@ -105,9 +101,7 @@
       ).openPopup();
     });
 
-    appState.map.on('locationerror', () => {
-      // Silent fail
-    });
+    appState.map.on('locationerror', () => {});
   }
 
   // =======================================================
@@ -123,7 +117,6 @@
 
     locateBtn.addEventListener('click', () => {
       if (navigator.geolocation) {
-        // Brief visual feedback
         locateBtn.style.background = 'var(--accent)';
         locateBtn.style.color = 'white';
 
@@ -146,7 +139,6 @@
               isEl ? '📍 Εδώ είσαι!' : '📍 You are here!'
             ).openPopup();
 
-            // Reset button
             locateBtn.style.background = '';
             locateBtn.style.color = '';
           },
@@ -178,18 +170,15 @@
 
         if (!layerDef) return;
 
-        // Remove current layer
         if (appState.currentTileLayer) {
           appState.map.removeLayer(appState.currentTileLayer);
         }
 
-        // Add new layer
         appState.currentTileLayer = L.tileLayer(layerDef.url, {
           attribution: layerDef.attribution,
           maxZoom: layerDef.maxZoom,
         }).addTo(appState.map);
 
-        // Update active button
         btns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
       });
@@ -197,7 +186,7 @@
   }
 
   // =======================================================
-  // Module Toggles (Fix #1 - Minimized on mobile)
+  // Module Toggles
   // =======================================================
 
   function initModuleToggles() {
@@ -219,7 +208,6 @@
       const checkbox = toggle.querySelector('input');
       checkbox.addEventListener('change', (e) => {
         if (e.target.checked) {
-          // Uncheck all others (single active module)
           container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
             if (cb !== checkbox) cb.checked = false;
           });
@@ -233,13 +221,11 @@
       container.appendChild(wrapper);
     });
 
-    // Set panel titles
     document.getElementById('modulesTitle').textContent = isEl ? 'Μονάδες' : 'Modules';
     document.getElementById('layersTitle').textContent = isEl ? 'Επίπεδα' : 'Layers';
   }
 
   function activateModule(moduleId) {
-    // Deactivate previous module
     if (appState.activeModuleId) {
       deactivateModule(appState.activeModuleId);
     }
@@ -256,7 +242,6 @@
     appState.activeModuleId = moduleId;
     appState.activeModule = mod;
 
-    // Show module panel
     const panel = document.getElementById('activeModulePanel');
     const title = document.getElementById('activeModuleTitle');
     const content = document.getElementById('moduleContent');
@@ -265,17 +250,14 @@
     panel.classList.add('active');
     content.innerHTML = '';
 
-    // Initialize module (NO additional title in content — Fix #11)
     initFn(appState.map, content, appState);
   }
 
   function deactivateModule(moduleId) {
-    // Run cleanup if exists
     const cleanupKey = '_' + moduleId.replace(/-/g, '_') + 'Cleanup';
     if (typeof window[cleanupKey] === 'function') {
       window[cleanupKey]();
     }
-    // Also check appState-level cleanup
     if (typeof appState[cleanupKey] === 'function') {
       appState[cleanupKey]();
       delete appState[cleanupKey];
@@ -292,15 +274,13 @@
   }
 
   // =======================================================
-  // Map Click Handler — Routes to Active Module
+  // Map Click Handler
   // =======================================================
 
   function initMapClickHandler() {
     appState.map.on('click', (e) => {
       if (!appState.activeModuleId) return;
 
-      // Convert module ID to the expected handler key format
-      // e.g. 'building-editor' -> 'onMapClick_buildingEditor'
       const handlerKey = 'onMapClick_' + appState.activeModuleId
         .split('-')
         .map((part, i) => i === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1))
@@ -315,11 +295,10 @@
   }
 
   // =======================================================
-  // Translations (apply to static elements)
+  // Translations
   // =======================================================
 
   function applyAppTranslations() {
-    // Loading text
     const loadingText = document.getElementById('loadingText');
     if (loadingText) {
       loadingText.textContent = isEl ? 'Φόρτωση Waymark...' : 'Loading Waymark...';
@@ -327,7 +306,7 @@
   }
 
   // =======================================================
-  // Service Worker Registration
+  // Service Worker
   // =======================================================
 
   function registerServiceWorker() {
@@ -341,18 +320,16 @@
   }
 
   // =======================================================
-  // DOMContentLoaded — Bootstrap
+  // Bootstrap
   // =======================================================
 
   document.addEventListener('DOMContentLoaded', () => {
-    // Fix #1 - On mobile, start minimized
     const isMobile = window.innerWidth <= 768;
     const moduleBody = document.getElementById('moduleToggles');
     if (isMobile && moduleBody) {
       moduleBody.style.display = 'none';
     }
 
-    // Close Module button
     const closeBtn = document.getElementById('closeModule');
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
@@ -365,7 +342,6 @@
       });
     }
 
-    // Panel collapse buttons
     document.getElementById('toggleModules')?.addEventListener('click', () => {
       const body = document.getElementById('moduleToggles');
       body.style.display = body.style.display === 'none' ? '' : 'none';
@@ -376,7 +352,6 @@
       body.style.display = body.style.display === 'none' ? '' : 'none';
     });
 
-    // Language toggle in header
     document.getElementById('langToggle')?.addEventListener('click', () => {
       const current = getCurrentLang();
       const newLang = current === 'en' ? 'el' : 'en';
@@ -388,7 +363,6 @@
       location.reload();
     });
 
-    // Try geolocation (optional, non-blocking)
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -401,7 +375,6 @@
       );
     }
 
-    // Init app
     init();
   });
 
