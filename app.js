@@ -1,515 +1,295 @@
 /* =========================================================
-   WAYMARK — Main Application
+   WAYMARK — Main Application Logic
    ========================================================= */
 
 (function () {
   'use strict';
 
-  let isEl = getCurrentLang() === 'el';
-
-  const appState = {
+  window.appState = {
     map: null,
-    mapMarkers: [],
     activeModule: null,
-    activeModuleId: null,
-    currentTileLayer: null,
-    geolocationWatch: null,
+    baseLayers: {},
+    currentBaseLayer: null,
     locationMarker: null,
   };
 
-  const MODULES = [
-    { id: 'nominatim', name_key: 'module.nominatim', icon: '🔍', init: () => window.initNominatim },
-    { id: 'poi-viewer', name_key: 'module.poi_viewer', icon: '📍', init: () => window.initPoiViewer },
-    { id: 'osm-editor', name_key: 'module.osm_editor', icon: '📤', init: () => window.initOsmEditor },
-    { id: 'track-recorder', name_key: 'module.track_recorder', icon: '🏃', init: () => window.initTrackRecorder },
-    { id: 'building-editor', name_key: 'module.building_editor', icon: '🏠', init: () => window.initBuildingEditor },
-    { id: 'road-editor', name_key: 'module.road_editor', icon: '🛣️', init: () => window.initRoadEditor },
-    { id: 'address-mapper', name_key: 'module.address_mapper', icon: '🏘️', init: () => window.initAddressMapper },
-    { id: 'quest-mode', name_key: 'module.quest_mode', icon: '🎯', init: () => window.initQuestMode },
-    { id: 'gpx-editor', name_key: 'module.gpx_editor', icon: '📐', init: () => window.initGpxEditor },
-    { id: 'quality-checker', name_key: 'module.quality_checker', icon: '✅', init: () => window.initQualityChecker },
-    { id: 'heatmap', name_key: 'module.heatmap', icon: '🔥', init: () => window.initHeatmap },
-    { id: 'tags-lookup', name_key: 'module.tags_lookup', icon: '🏷️', init: () => window.initTagsLookup },
-    { id: 'notes-browser', name_key: 'module.notes_browser', icon: '📝', init: () => window.initNotesBrowser },
-    // Tutorial removed — accessible via header ? button
+  var MODULES = [
+    { id: 'nominatim',       name: { en: 'Search',           el: 'Αναζήτηση' },       init: 'initNominatim',       cleanup: '_nominatimCleanup' },
+    { id: 'poi-viewer',      name: { en: 'POI Viewer',       el: 'POI Προβολή' },      init: 'initPoiViewer',      cleanup: '_poiViewerCleanup' },
+    { id: 'gpx-editor',      name: { en: 'GPX Editor',       el: 'GPX Επεξεργασία' },  init: 'initGpxEditor',      cleanup: '_gpxEditorCleanup' },
+    { id: 'xml-generator',   name: { en: 'XML Generator',    el: 'XML Γεννήτρια' },    init: 'initXmlGenerator',   cleanup: '_xmlGeneratorCleanup' },
+    { id: 'osm-editor',      name: { en: 'OSM Editor',      el: 'OSM Επεξεργασία' },  init: 'initOsmEditor',      cleanup: '_osmEditorCleanup' },
+    { id: 'quality-checker', name: { en: 'Quality Checker',  el: 'Ποιότητα' },         init: 'initQualityChecker', cleanup: '_qualityCheckerCleanup' },
+    { id: 'heatmap',         name: { en: 'Heatmap',         el: 'Heatmap' },          init: 'initHeatmap',        cleanup: '_heatmapCleanup' },
+    { id: 'tags-lookup',     name: { en: 'Tags Lookup',     el: 'Tags' },             init: 'initTagsLookup',     cleanup: '_tagsLookupCleanup' },
+    { id: 'notes-browser',   name: { en: 'Notes Browser',   el: 'Σημειώσεις' },       init: 'initNotesBrowser',   cleanup: '_notesBrowserCleanup' },
+    { id: 'track-recorder',  name: { en: 'Track Recorder',  el: 'Καταγραφή' },        init: 'initTrackRecorder',  cleanup: '_trackRecorderCleanup' },
+    { id: 'building-editor', name: { en: 'Building Editor',  el: 'Κτήρια' },          init: 'initBuildingEditor', cleanup: '_buildingEditorCleanup' },
+    { id: 'road-editor',     name: { en: 'Road Editor',     el: 'Δρόμοι' },           init: 'initRoadEditor',     cleanup: '_roadEditorCleanup' },
+    { id: 'address-mapper',  name: { en: 'Address Mapper',  el: 'Διευθύνσεις' },      init: 'initAddressMapper',  cleanup: '_addressMapperCleanup' },
+    { id: 'quest-mode',      name: { en: 'Quest Mode',      el: 'Quests' },           init: 'initQuestMode',      cleanup: '_questModeCleanup' },
   ];
 
-  // =======================================================
-  // Initialization
-  // =======================================================
+  document.addEventListener('DOMContentLoaded', initApp);
 
-  function init() {
+  function initApp() {
     initMap();
-    initLayerControls();
+    initLayers();
     initModuleToggles();
-    initMapClickHandler();
     initLocationButton();
-    initThemeToggle();
-    initHelpButton();
+    initResizeHandler();
     registerServiceWorker();
-    applyAppTranslations();
-
-    // Force Leaflet to recalculate size — aggressive strategy
-    requestAnimationFrame(() => {
-      if (appState.map) appState.map.invalidateSize();
-    });
-
-    setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 100);
-    setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 500);
-    setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 1000);
-    setTimeout(() => { if (appState.map) appState.map.invalidateSize(); }, 2000);
-
-    // Invalidate on window resize
-    window.addEventListener('resize', () => {
-      if (appState.map) appState.map.invalidateSize();
-    });
-
-    // Invalidate on orientation change (mobile)
-    window.addEventListener('orientationchange', () => {
-      setTimeout(() => {
-        if (appState.map) appState.map.invalidateSize();
-      }, 300);
-    });
-
-    // Remove loading overlay then invalidate
-    const overlay = document.getElementById('loadingOverlay');
-    if (overlay) {
-      overlay.style.opacity = '0';
-      setTimeout(() => {
-        overlay.style.display = 'none';
-        if (appState.map) appState.map.invalidateSize();
-        requestAnimationFrame(() => {
-          if (appState.map) appState.map.invalidateSize();
-        });
-      }, 300);
-    }
   }
-
-  // =======================================================
-  // Map Setup
-  // =======================================================
 
   function initMap() {
-    const cfg = window.WAYMARK_CONFIG || {};
-    const lat = cfg.DEFAULT_LAT || 39.0742;
-    const lon = cfg.DEFAULT_LON || 21.8243;
-    const zoom = cfg.DEFAULT_ZOOM || 7;
+    var mapEl = document.getElementById('map');
+    if (!mapEl) { console.error('Map element not found'); return; }
 
-    const mapEl = document.getElementById('map');
+    console.log('Initializing map...');
 
-    console.log('Initializing map with:', { lat, lon, zoom });
-    console.log('Map element:', mapEl);
-    console.log('Map element dimensions:', mapEl.offsetWidth, 'x', mapEl.offsetHeight);
-
-    appState.map = L.map(mapEl, {
-      zoomControl: false,
+    window.appState.map = L.map('map', {
+      center: [37.9838, 23.7275],
+      zoom: 13,
+      zoomControl: true,
       attributionControl: true,
-      fadeAnimation: true,
-      zoomAnimation: true,
-    }).setView([lat, lon], zoom);
+    });
 
-    L.control.zoom({ position: 'bottomleft' }).addTo(appState.map);
-    L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(appState.map);
+    L.control.scale({ imperial: false, metric: true }).addTo(window.appState.map);
 
-    // Add default tile layer
-    const defaultLayer = cfg.TILE_LAYERS?.standard;
-    if (defaultLayer) {
-      console.log('Adding tile layer:', defaultLayer.url);
-      appState.currentTileLayer = L.tileLayer(defaultLayer.url, {
-        attribution: defaultLayer.attribution,
-        maxZoom: defaultLayer.maxZoom,
-      }).addTo(appState.map);
+    window.appState.map.on('click', function (e) {
+      var lat = e.latlng.lat;
+      var lng = e.latlng.lng;
+      var handlers = [
+        window.onMapClick_nominatim,
+        window.onMapClick_poiViewer,
+        window.onMapClick_gpxEditor,
+        window.onMapClick_xmlGenerator,
+        window.onMapClick_osmEditor,
+        window.onMapClick_qualityChecker,
+        window.onMapClick_heatmap,
+        window.onMapClick_tagsLookup,
+        window.onMapClick_notesBrowser,
+        window.onMapClick_trackRecorder,
+        window.onMapClick_buildingEditor,
+        window.onMapClick_roadEditor,
+        window.onMapClick_addressMapper,
+        window.onMapClick_questMode,
+      ];
+      for (var i = 0; i < handlers.length; i++) {
+        if (typeof handlers[i] === 'function') {
+          try { handlers[i](lat, lng); } catch (err) { console.error('Map click handler error:', err); }
+        }
+      }
+    });
+  }
 
-      appState.currentTileLayer.on('tileloaderror', (e) => {
-        console.error('Tile load error:', e);
-      });
-    } else {
-      console.error('NO DEFAULT TILE LAYER FOUND IN CONFIG');
+  function initLayers() {
+    var cfg = window.WAYMARK_CONFIG || {};
+    var layers = cfg.LAYERS || [
+      { id: 'standard', name: { en: 'Standard', el: 'Standard' }, url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '© OpenStreetMap', maxZoom: 19 },
+      { id: 'satellite', name: { en: 'Satellite', el: 'Δορυφορικό' }, url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: '© Esri', maxZoom: 19 },
+      { id: 'dark', name: { en: 'Dark', el: 'Σκούρο' }, url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attribution: '© CARTO © OSM', maxZoom: 19, subdomains: 'abcd' },
+      { id: 'topographic', name: { en: 'Topographic', el: 'Τοπογραφικό' }, url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', attribution: '© OpenTopoMap © OSM', maxZoom: 17, subdomains: 'abc' },
+    ];
+
+    layers.forEach(function (layerCfg) {
+      var opts = { attribution: layerCfg.attribution, maxZoom: layerCfg.maxZoom || 19 };
+      if (layerCfg.subdomains) opts.subdomains = layerCfg.subdomains;
+
+      var layer = L.tileLayer(layerCfg.url, opts);
+      window.appState.baseLayers[layerCfg.id] = layer;
+    });
+
+    // Default layer
+    var firstId = layers[0] ? layers[0].id : 'standard';
+    if (window.appState.baseLayers[firstId]) {
+      window.appState.baseLayers[firstId].addTo(window.appState.map);
+      window.appState.currentBaseLayer = firstId;
     }
 
-    appState.map.on('locationfound', (e) => {
-      if (appState.locationMarker) {
-        appState.map.removeLayer(appState.locationMarker);
-      }
-      appState.locationMarker = L.circleMarker([e.latitude, e.longitude], {
-        radius: 10,
-        fillColor: '#6d4aff',
-        color: 'white',
-        weight: 2,
-        fillOpacity: 0.8,
-      }).addTo(appState.map).bindPopup(
-        isEl ? '📍 Εδώ είσαι!' : '📍 You are here!'
-      ).openPopup();
-    });
-
-    appState.map.on('locationerror', () => {});
-  }
-
-  // =======================================================
-  // Location Button
-  // =======================================================
-
-  function initLocationButton() {
-    const locateBtn = document.createElement('button');
-    locateBtn.className = 'location-button';
-    locateBtn.innerHTML = '📍';
-    locateBtn.title = isEl ? 'Τρέχουσα θέση' : 'Current location';
-    locateBtn.type = 'button';
-    locateBtn.tabIndex = 0;
-    
-    // Append to #app directly, NOT to #map
-    document.getElementById('app').appendChild(locateBtn);
-
-    locateBtn.addEventListener('click', () => {
-      if (navigator.geolocation) {
-        locateBtn.style.background = 'var(--accent)';
-        locateBtn.style.color = 'white';
-
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const lat = pos.coords.latitude;
-            const lon = pos.coords.longitude;
-            appState.map.setView([lat, lon], 15);
-
-            if (appState.locationMarker) {
-              appState.map.removeLayer(appState.locationMarker);
-            }
-            appState.locationMarker = L.circleMarker([lat, lon], {
-              radius: 10,
-              fillColor: '#6d4aff',
-              color: 'white',
-              weight: 2,
-              fillOpacity: 0.8,
-            }).addTo(appState.map).bindPopup(
-              isEl ? '📍 Εδώ είσαι!' : '📍 You are here!'
-            ).openPopup();
-
-            locateBtn.style.background = '';
-            locateBtn.style.color = '';
-          },
-          (err) => {
-            console.error('Geolocation error:', err);
-            alert(isEl
-              ? 'Δεν ήταν δυνατός ο εντοπισμός της θέσης σου.'
-              : 'Could not determine your location.');
-            locateBtn.style.background = '';
-            locateBtn.style.color = '';
-          },
-          { timeout: 10000, enableHighAccuracy: true }
-        );
-      }
-    });
-  }
-
-  // =======================================================
-  // Theme Toggle
-  // =======================================================
-
-  function initThemeToggle() {
-    const themeBtn = document.getElementById('themeToggle');
-    if (!themeBtn) {
-      console.error('Theme toggle button not found');
-      return;
-    }
-
-    function updateIcon() {
-      const current = (typeof getCurrentTheme === 'function')
-        ? getCurrentTheme()
-        : 'dark';
-      // Show icon for what you'll switch TO
-      themeBtn.textContent = current === 'dark' ? '☀️' : '🌙';
-      themeBtn.title = current === 'dark'
-        ? (isEl ? 'Εναλλαγή σε φωτεινό' : 'Switch to light')
-        : (isEl ? 'Εναλλαγή σε σκοτεινό' : 'Switch to dark');
-    }
-
-    updateIcon();
-
-    themeBtn.addEventListener('click', () => {
-      if (typeof toggleTheme === 'function') {
-        toggleTheme();
-      }
-      updateIcon();
-
-      // Invalidate map size after theme change (layout may shift)
-      if (appState.map) {
-        requestAnimationFrame(() => {
-          appState.map.invalidateSize();
-        });
-        setTimeout(() => {
-          if (appState.map) appState.map.invalidateSize();
-        }, 200);
-      }
-    });
-  }
-
-  // =======================================================
-  // Help Button (? → Tutorial)
-  // =======================================================
-
-  function initHelpButton() {
-    const helpBtn = document.getElementById('helpBtn');
-    if (!helpBtn) return;
-
-    helpBtn.addEventListener('click', () => {
-      // Check if tutorial module exists in array (in case it's added back)
-      const cb = document.querySelector('input[data-module-id="tutorial"]');
-      if (cb) {
-        if (appState.activeModuleId) {
-          deactivateModule(appState.activeModuleId);
-          const prevCb = document.querySelector(`input[data-module-id="${appState.activeModuleId}"]`);
-          if (prevCb) prevCb.checked = false;
-        }
-
-        cb.checked = true;
-        activateModule('tutorial');
-
-        setTimeout(() => {
-          if (typeof window.startTutorialWalkthrough === 'function') {
-            window.startTutorialWalkthrough();
-          }
-        }, 300);
-      } else {
-        // Tutorial module not loaded, but start walkthrough anyway if function exists
-        if (typeof window.startTutorialWalkthrough === 'function') {
-          window.startTutorialWalkthrough();
-        } else {
-          alert(isEl 
-            ? 'Το tutorial δεν είναι διαθέσιμο.' 
-            : 'Tutorial not available.');
-        }
-      }
-    });
-  }
-
-  // =======================================================
-  // Layer Controls
-  // =======================================================
-
-  function initLayerControls() {
-    const btns = document.querySelectorAll('.layer-btn');
-    btns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const layerName = btn.dataset.layer;
-        const cfg = window.WAYMARK_CONFIG || {};
-        const layerDef = cfg.TILE_LAYERS?.[layerName];
-
-        if (!layerDef) {
-          console.warn('Layer not found in config:', layerName);
-          return;
-        }
-
-        console.log('Switching layer to:', layerName, layerDef.url);
-
-        if (appState.currentTileLayer) {
-          appState.map.removeLayer(appState.currentTileLayer);
-        }
-
-        appState.currentTileLayer = L.tileLayer(layerDef.url, {
-          attribution: layerDef.attribution,
-          maxZoom: layerDef.maxZoom,
-        }).addTo(appState.map);
-
-        // Log tile events for debugging
-        appState.currentTileLayer.on('tileloaderror', (e) => {
-          console.error('Tile load error for layer', layerName, ':', e);
-        });
-
-        btns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-
-        // Force invalidation after layer switch
-        setTimeout(() => {
-          if (appState.map) appState.map.invalidateSize();
-        }, 100);
-      });
-    });
-  }
-
-  // =======================================================
-  // Module Toggles
-  // =======================================================
-
-  function initModuleToggles() {
-    const container = document.getElementById('moduleToggles');
+    // Render layer buttons
+    var container = document.getElementById('layerControls');
+    if (!container) return;
     container.innerHTML = '';
 
-    MODULES.forEach(mod => {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'module-toggle-wrapper';
+    var isEl = getCurrentLang() === 'el';
 
-      const toggle = document.createElement('label');
-      toggle.className = 'module-toggle';
-      toggle.innerHTML = `
-        <input type="checkbox" data-module-id="${mod.id}">
-        <span class="module-toggle-slider"></span>
-        <span class="module-toggle-label">${mod.icon} ${t(mod.name_key)}</span>
-      `;
-
-      const checkbox = toggle.querySelector('input');
-      checkbox.addEventListener('change', (e) => {
-        if (e.target.checked) {
-          container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-            if (cb !== checkbox) cb.checked = false;
-          });
-          activateModule(mod.id);
-        } else {
-          deactivateModule(mod.id);
-        }
-      });
-
-      wrapper.appendChild(toggle);
-      container.appendChild(wrapper);
+    layers.forEach(function (layerCfg) {
+      var btn = document.createElement('button');
+      btn.className = 'layer-btn' + (layerCfg.id === firstId ? ' active' : '');
+      btn.textContent = isEl ? layerCfg.name.el : layerCfg.name.en;
+      btn.dataset.layerId = layerCfg.id;
+      btn.addEventListener('click', function () { switchLayer(layerCfg.id); });
+      container.appendChild(btn);
     });
+  }
 
-    document.getElementById('modulesTitle').textContent = isEl ? 'Μονάδες' : 'Modules';
-    document.getElementById('layersTitle').textContent = isEl ? 'Επίπεδα' : 'Layers';
+  function switchLayer(layerId) {
+    if (!window.appState.baseLayers[layerId]) return;
+    if (window.appState.currentBaseLayer && window.appState.baseLayers[window.appState.currentBaseLayer]) {
+      window.appState.map.removeLayer(window.appState.baseLayers[window.appState.currentBaseLayer]);
+    }
+    window.appState.baseLayers[layerId].addTo(window.appState.map);
+    window.appState.currentBaseLayer = layerId;
+
+    document.querySelectorAll('.layer-btn').forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.layerId === layerId);
+    });
+  }
+
+  function initModuleToggles() {
+    var container = document.getElementById('moduleToggles');
+    if (!container) return;
+    container.innerHTML = '';
+
+    var isEl = getCurrentLang() === 'el';
+
+    MODULES.forEach(function (mod) {
+      var wrapper = document.createElement('div');
+      wrapper.className = 'module-toggle-wrapper';
+      wrapper.innerHTML =
+        '<label class="module-toggle">' +
+        '  <input type="checkbox" data-module-id="' + mod.id + '">' +
+        '  <span class="module-toggle-slider"></span>' +
+        '  <span class="module-toggle-label">' + (isEl ? mod.name.el : mod.name.en) + '</span>' +
+        '</label>';
+      container.appendChild(wrapper);
+
+      var checkbox = wrapper.querySelector('input');
+      checkbox.addEventListener('change', function () {
+        if (this.checked) activateModule(mod.id);
+        else deactivateModule(mod.id);
+      });
+    });
   }
 
   function activateModule(moduleId) {
-    if (appState.activeModuleId) {
-      deactivateModule(appState.activeModuleId);
-    }
-
-    const mod = MODULES.find(m => m.id === moduleId);
+    var mod = MODULES.find(function (m) { return m.id === moduleId; });
     if (!mod) return;
 
-    const initFn = mod.init();
+    // Deactivate current module if different
+    if (window.appState.activeModule && window.appState.activeModule !== moduleId) {
+      deactivateModule(window.appState.activeModule);
+    }
+
+    window.appState.activeModule = moduleId;
+
+    var panel = document.getElementById('activeModulePanel');
+    var titleEl = document.getElementById('activeModuleTitle');
+    var content = document.getElementById('moduleContent');
+    if (!panel || !content) return;
+
+    var isEl = getCurrentLang() === 'el';
+    panel.classList.add('active');
+    titleEl.textContent = isEl ? mod.name.el : mod.name.en;
+    content.innerHTML = '';
+
+    var initFn = window[mod.init];
     if (typeof initFn !== 'function') {
-      console.error('Module init function not found:', moduleId);
+      console.error('Module init function not found:', mod.init);
+      content.innerHTML = '<p style="color:var(--danger)">Module not available: ' + mod.init + '</p>';
       return;
     }
 
-    appState.activeModuleId = moduleId;
-    appState.activeModule = mod;
-
-    const panel = document.getElementById('activeModulePanel');
-    const title = document.getElementById('activeModuleTitle');
-    const content = document.getElementById('moduleContent');
-
-    title.textContent = mod.icon + ' ' + t(mod.name_key);
-    panel.classList.add('active');
-    content.innerHTML = '';
-
-    initFn(appState.map, content, appState);
-
-    // Invalidate after panel appears
-    setTimeout(() => {
-      if (appState.map) appState.map.invalidateSize();
-    }, 100);
+    try {
+      initFn(window.appState.map, content, window.appState);
+    } catch (err) {
+      console.error('Module init error:', mod.id, err);
+      content.innerHTML = '<p style="color:var(--danger)">Error: ' + escapeHtml(err.message) + '</p>';
+    }
   }
 
   function deactivateModule(moduleId) {
-    const cleanupKey = '_' + moduleId.replace(/-/g, '_') + 'Cleanup';
-    if (typeof window[cleanupKey] === 'function') {
-      window[cleanupKey]();
-    }
-    if (typeof appState[cleanupKey] === 'function') {
-      appState[cleanupKey]();
-      delete appState[cleanupKey];
+    var mod = MODULES.find(function (m) { return m.id === moduleId; });
+    if (!mod) return;
+
+    var cleanupFn = window[mod.cleanup];
+    if (typeof cleanupFn === 'function') {
+      try { cleanupFn(); } catch (err) { console.error('Cleanup error:', moduleId, err); }
     }
 
-    if (appState.activeModuleId === moduleId) {
-      appState.activeModuleId = null;
-      appState.activeModule = null;
-
-      const panel = document.getElementById('activeModulePanel');
-      panel.classList.remove('active');
-      document.getElementById('moduleContent').innerHTML = '';
+    if (window.appState.activeModule === moduleId) {
+      window.appState.activeModule = null;
+      var panel = document.getElementById('activeModulePanel');
+      if (panel) panel.classList.remove('active');
     }
+
+    var checkbox = document.querySelector('input[data-module-id="' + moduleId + '"]');
+    if (checkbox) checkbox.checked = false;
   }
 
-  // =======================================================
-  // Map Click Handler
-  // =======================================================
+  window.activateModule = activateModule;
+  window.deactivateModule = deactivateModule;
+  window.switchLayer = switchLayer;
 
-  function initMapClickHandler() {
-    appState.map.on('click', (e) => {
-      if (!appState.activeModuleId) return;
+  // Expose for close button
+  window.closeActivePanel = function () {
+    if (window.appState.activeModule) {
+      deactivateModule(window.appState.activeModule);
+    }
+  };
 
-      const handlerKey = 'onMapClick_' + appState.activeModuleId
-        .split('-')
-        .map((part, i) => i === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1))
-        .join('');
+  function initLocationButton() {
+    var btn = document.getElementById('locationBtn');
+    if (!btn) return;
 
-      if (typeof appState[handlerKey] === 'function') {
-        appState[handlerKey](e.latlng.lat, e.latlng.lng);
-      } else if (typeof window[handlerKey] === 'function') {
-        window[handlerKey](e.latlng.lat, e.latlng.lng, appState.map, appState);
+    btn.addEventListener('click', function () {
+      if (!navigator.geolocation) {
+        showNotification(getCurrentLang() === 'el' ? 'Δεν υποστηρίζεται' : 'Not supported', 'warning');
+        return;
       }
+
+      showNotification(getCurrentLang() === 'el' ? 'Εντοπισμός...' : 'Locating...', 'info');
+
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        var lat = pos.coords.latitude;
+        var lng = pos.coords.longitude;
+
+        if (window.appState.locationMarker) {
+          window.appState.map.removeLayer(window.appState.locationMarker);
+        }
+
+        window.appState.locationMarker = L.circleMarker([lat, lng], {
+          radius: 10,
+          fillColor: '#6d4aff',
+          color: 'white',
+          weight: 3,
+          fillOpacity: 0.8
+        }).addTo(window.appState.map);
+
+        window.appState.locationMarker.bindPopup(getCurrentLang() === 'el' ? 'Είσαι εδώ' : 'You are here');
+        window.appState.map.setView([lat, lng], 16);
+        window.appState.locationMarker.openPopup();
+      }, function (err) {
+        showNotification(getCurrentLang() === 'el' ? 'Σφάλμα γεωτοποθεσίας' : 'Geolocation error', 'warning');
+      }, { enableHighAccuracy: true, timeout: 10000 });
     });
   }
 
-  // =======================================================
-  // Translations
-  // =======================================================
+  function initResizeHandler() {
+    var timer = null;
+    window.addEventListener('resize', function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        if (window.appState.map) window.appState.map.invalidateSize();
+      }, 200);
+    });
 
-  function applyAppTranslations() {
-    const loadingText = document.getElementById('loadingText');
-    if (loadingText) {
-      loadingText.textContent = isEl ? 'Φόρτωση Waymark...' : 'Loading Waymark...';
-    }
+    window.addEventListener('orientationchange', function () {
+      setTimeout(function () {
+        if (window.appState.map) window.appState.map.invalidateSize();
+      }, 300);
+    });
   }
-
-  // =======================================================
-  // Service Worker
-  // =======================================================
 
   function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('SW registered:', reg.scope))
-          .catch(err => console.log('SW registration failed:', err));
+      navigator.serviceWorker.register('sw.js').then(function (reg) {
+        console.log('SW registered:', reg.scope);
+      }).catch(function (err) {
+        console.error('SW error:', err);
       });
     }
   }
-
-  // =======================================================
-  // Bootstrap
-  // =======================================================
-
-  document.addEventListener('DOMContentLoaded', () => {
-    const isMobile = window.innerWidth <= 768;
-    const moduleBody = document.getElementById('moduleToggles');
-    if (isMobile && moduleBody) {
-      moduleBody.style.display = 'none';
-    }
-
-    const closeBtn = document.getElementById('closeModule');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
-        if (appState.activeModuleId) {
-          const prevId = appState.activeModuleId;
-          deactivateModule(prevId);
-          const cb = document.querySelector(`input[data-module-id="${prevId}"]`);
-          if (cb) cb.checked = false;
-        }
-      });
-    }
-
-    document.getElementById('toggleModules')?.addEventListener('click', () => {
-      const body = document.getElementById('moduleToggles');
-      body.style.display = body.style.display === 'none' ? '' : 'none';
-    });
-
-    document.getElementById('toggleLayers')?.addEventListener('click', () => {
-      const body = document.getElementById('layerControls');
-      body.style.display = body.style.display === 'none' ? '' : 'none';
-    });
-
-    document.getElementById('langToggle')?.addEventListener('click', () => {
-      const current = getCurrentLang();
-      const newLang = current === 'en' ? 'el' : 'en';
-      if (typeof setLanguage === 'function') {
-        setLanguage(newLang);
-        return;
-      }
-      localStorage.setItem('waymark_lang', newLang);
-      location.reload();
-    });
-
-    init();
-  });
 
 })();

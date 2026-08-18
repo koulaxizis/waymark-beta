@@ -7,25 +7,18 @@
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #1a1a1a;
-      color: #e0e0e0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
+      background: #1a1a1a; color: #e0e0e0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 100vh; margin: 0;
     }
     .spinner {
-      width: 48px;
-      height: 48px;
-      border: 4px solid #333;
-      border-top-color: #6d4aff;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
+      width: 48px; height: 48px;
+      border: 4px solid #333; border-top-color: #6d4aff;
+      border-radius: 50%; animation: spin 1s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #message { margin-top: 1rem; color: #a0a0a0; text-align: center; padding: 0 1rem; }
+    #message { margin-top: 1rem; color: #a0a0a0; text-align: center; padding: 0 1rem; max-width: 400px; }
     #message.error { color: #ef4444; }
   </style>
 </head>
@@ -41,20 +34,19 @@
       var msgEl = document.getElementById('message');
       var spinnerEl = document.getElementById('spinner');
 
-      if (!code || !state) {
-        showError('Invalid callback: missing code or state');
-        return;
+      function showError(msg) {
+        spinnerEl.style.display = 'none';
+        msgEl.textContent = msg;
+        msgEl.classList.add('error');
       }
 
-      if (state !== 'waymark_editor') {
-        showError('Invalid state parameter');
-        return;
-      }
+      if (!code || !state) { showError('Invalid callback: missing code or state'); return; }
+      if (state !== 'waymark_editor') { showError('Invalid state parameter'); return; }
 
       try {
-        // Load config
-        var cfgScript = await fetch('config.js');
-        var cfgText = await cfgScript.text();
+        // Load config.js
+        var cfgResp = await fetch('config.js');
+        var cfgText = await cfgResp.text();
 
         var proxyMatch = cfgText.match(/PROXY_URL:\s*'([^']+)'/);
         var clientIdMatch = cfgText.match(/OSM_CLIENT_ID:\s*'([^']+)'/);
@@ -68,74 +60,68 @@
         var clientId = clientIdMatch[1];
         var redirectUri = redirectMatch[1];
 
-        // Get PKCE verifier from localStorage (shared across tabs)
+        // Get PKCE verifier
         var verifier = localStorage.getItem('pkce_verifier') || '';
+        if (!verifier) { showError('Missing PKCE verifier. Please try logging in again.'); return; }
 
-        if (!verifier) {
-          showError('Missing PKCE verifier. Please try logging in again.');
-          return;
-        }
+        msgEl.textContent = 'Exchanging authorization code...';
 
-        // Exchange code for token via proxy
+        // Build form-encoded body (OSM expects application/x-www-form-urlencoded)
+        var formData = new URLSearchParams();
+        formData.append('grant_type', 'authorization_code');
+        formData.append('code', code);
+        formData.append('redirect_uri', redirectUri);
+        formData.append('client_id', clientId);
+        formData.append('code_verifier', verifier);
+
         var tokenResp = await fetch(proxyUrl + '/oauth2/token', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            grant_type: 'authorization_code',
-            code: code,
-            redirect_uri: redirectUri,
-            client_id: clientId,
-            code_verifier: verifier
-          })
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: formData.toString()
         });
 
-        var tokenData = await tokenResp.json().catch(function () { return {}; });
+        var respText = await tokenResp.text();
 
-        if (!tokenData.access_token) {
-          console.error('Token exchange response:', tokenData);
-          showError('Token exchange failed: ' + (tokenData.error_description || tokenData.error || JSON.stringify(tokenData)));
+        var tokenData;
+        try { tokenData = JSON.parse(respText); } catch (e) {
+          showError('Token response not JSON: ' + respText.substring(0, 200));
           return;
         }
 
-        // Store token in localStorage (persists across pages)
+        if (!tokenData.access_token) {
+          console.error('Token exchange failed:', tokenData);
+          showError('Token exchange failed: ' + (tokenData.error_description || tokenData.error || 'Unknown error'));
+          return;
+        }
+
+        // Store token
         localStorage.setItem('osm_access_token', tokenData.access_token);
         localStorage.removeItem('pkce_verifier');
 
-        // Fetch user details via proxy
+        // Fetch user details
         try {
           var userResp = await fetch(proxyUrl + '/api/0.6/user/details', {
             headers: { 'Authorization': 'Bearer ' + tokenData.access_token }
           });
-
           if (userResp.ok) {
             var userText = await userResp.text();
             var idMatch = userText.match(/<user[^>]*id="(\d+)"/);
-            if (idMatch) {
-              localStorage.setItem('osm_user_id', idMatch[1]);
-            }
-          }
-        } catch (e) {
-          console.error('User details fetch failed:', e);
-        }
+            if (idMatch) localStorage.setItem('osm_user_id', idMatch[1]);
 
-        // Success — redirect to app
+            var nameMatch = userText.match(/<user[^>]*display_name="([^"]+)"/);
+            if (nameMatch) localStorage.setItem('osm_user_name', nameMatch[1]);
+          }
+        } catch (e) { console.error('User details fetch failed:', e); }
+
         msgEl.textContent = '✅ Login successful! Redirecting...';
         msgEl.style.color = '#22c55e';
         spinnerEl.style.display = 'none';
 
-        setTimeout(function () {
-          window.location.href = 'app.html';
-        }, 800);
+        setTimeout(function () { window.location.href = 'app.html'; }, 800);
 
       } catch (err) {
         console.error('OAuth callback error:', err);
         showError('Error: ' + err.message);
-      }
-
-      function showError(msg) {
-        spinnerEl.style.display = 'none';
-        msgEl.textContent = msg;
-        msgEl.classList.add('error');
       }
     })();
   </script>

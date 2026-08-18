@@ -1,149 +1,125 @@
 /* =========================================================
    WAYMARK — Heatmap Module
-   Visualizes OSM data density using Overpass API.
+   Visualize POI density using circle markers.
    ========================================================= */
 
-let heatmapState = {
-  circleMarkers: [],
-  isLoading: false,
-};
+var heatmapState = { mapMarkers: [], isLoading: false };
+
+function getHmMap() { return window.appState ? window.appState.map : null; }
 
 function initHeatmap(map, container, appState) {
   renderHeatmapUI(container);
 
-  let viewportTimer = null;
-  map.on('moveend', () => {
-    clearTimeout(viewportTimer);
-    viewportTimer = setTimeout(() => {
-      if (heatmapState.lastQuery) {
-        loadHeatmapData(map, heatmapState.lastQuery);
-      }
-    }, 500);
-  });
+  var m = getHmMap();
+  if (m) {
+    var timer = null;
+    m.on('moveend', function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () { generateHeatmap(); }, 600);
+    });
+  }
 
-  function handleMapClick(lat, lng) {}
-  window.onMapClick_heatmap = handleMapClick;
+  window.onMapClick_heatmap = function (lat, lng) {};
+  generateHeatmap();
 }
 
 function renderHeatmapUI(container) {
-  const isEl = getCurrentLang() === 'el';
+  var isEl = getCurrentLang() === 'el';
+  container.innerHTML =
+    '<div class="heatmap-ui">' +
+    '  <div class="form-group"><label>' + (isEl ? 'Κατηγορία:' : 'Category:') + '</label>' +
+    '    <select id="heatCat" class="form-control">' +
+    '      <option value="amenity">Amenity</option>' +
+    '      <option value="shop">Shop</option>' +
+    '      <option value="building">Building</option>' +
+    '      <option value="highway">Highway</option>' +
+    '    </select>' +
+    '  </div>' +
+    '  <button id="genHeatBtn" class="btn btn-primary">🔥 ' + (isEl ? 'Δημιουργία' : 'Generate') + '</button>' +
+    '  <div id="heatStats" class="note-description" style="margin-top:0.5rem;"></div>' +
+    '</div>';
 
-  container.innerHTML = `
-    <div class="heatmap-ui">
-      <div class="form-group">
-        <label>${isEl ? 'Κατηγορία:' : 'Category:'}</label>
-        <select id="hmCategory" class="form-control">
-          <option value="amenity">Amenity</option>
-          <option value="shop">Shop</option>
-      </select>
-      </div>
-
-      <div class="form-group">
-        <label>${isEl ? 'Ακτίνα (m):' : 'Radius (m):'}</label>
-        <input type="number" id="hmRadius" class="form-control" value="50" min="10" max="500">
-      </div>
-
-      <button id="hmLoadBtn" class="btn btn-primary">
-        🔥 ${isEl ? 'Δημιουργία Heatmap' : 'Generate Heatmap'}
-      </button>
-
-      <div id="hmStats" class="note-description" style="margin-top:0.5rem;"></div>
-      <button id="hmClearBtn" class="btn btn-danger">🗑️ ${isEl ? 'Καθαρισμός' : 'Clear'}</button>
-    </div>
-  `;
-
-  document.getElementById('hmLoadBtn').addEventListener('click', () => {
-    const category = document.getElementById('hmCategory').value;
-    loadHeatmapData(map, category);
-  });
-
-  document.getElementById('hmClearBtn').addEventListener('click', () => {
-    clearHeatmap();
-  });
+  var catEl = document.getElementById('heatCat');
+  var genBtn = document.getElementById('genHeatBtn');
+  if (catEl) catEl.addEventListener('change', generateHeatmap);
+  if (genBtn) genBtn.addEventListener('click', generateHeatmap);
 }
 
-async function loadHeatmapData(map, category) {
+async function generateHeatmap() {
   if (heatmapState.isLoading) return;
   heatmapState.isLoading = true;
 
-  const isEl = getCurrentLang() === 'el';
-  const radius = parseInt(document.getElementById('hmRadius')?.value || '50', 10);
+  var map = getHmMap();
+  if (!map) { heatmapState.isLoading = false; return; }
 
-  showHmSpinner(true);
+  var catEl = document.getElementById('heatCat');
+  var cat = catEl ? catEl.value : 'amenity';
+  var isEl = getCurrentLang() === 'el';
 
   try {
-    const bounds = map.getBounds();
-    const sw = bounds.getSouthWest();
-    const ne = bounds.getNorthEast();
-    const bboxStr = `${sw.lat},${sw.lon},${ne.lat},${ne.lon}`;
+    var bounds = map.getBounds();
+    var bbox = bounds.getSouth() + ',' + bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast();
 
-    const query = `
-[out:json][timeout:25];
-(
-  node["${category}"](${bboxStr});
-);
-out body 200;
-`.trim();
+    var query = '[out:json][timeout:25];(' +
+      'node["' + cat + '"](' + bbox + ');' +
+      ');out 200;';
 
-    const result = await safeOverpassFetch(query, isEl);
+    var data = await safeOverpassFetch(query, isEl);
+    var elements = data.elements || [];
 
-    clearHeatmap();
+    clearHeatMarkers();
 
-    if (!result.elements || result.elements.length === 0) {
-      document.getElementById('hmStats').textContent = isEl ? 'Δεν βρέθηκαν δεδομένα' : 'No data found';
-      return;
-    }
+    var maxCount = 1;
+    var grid = {};
 
-    result.elements.forEach(el => {
-      if (el.lat && el.lon) {
-        const marker = L.circleMarker([el.lat, el.lon], {
-          radius: Math.max(4, radius / 10),
-          fillColor: '#6d4aff',
-          color: '#6d4aff',
-          weight: 1,
-          fillOpacity: 0.3,
-        }).addTo(map);
-
-        heatmapState.circleMarkers.push(marker);
-      }
+    elements.forEach(function (el) {
+      if (!el.lat || !el.lon) return;
+      var key = Math.round(el.lat * 1000) + '_' + Math.round(el.lon * 1000);
+      grid[key] = (grid[key] || 0) + 1;
+      if (grid[key] > maxCount) maxCount = grid[key];
     });
 
-    heatmapState.lastQuery = category;
+    Object.keys(grid).forEach(function (key) {
+      var parts = key.split('_');
+      var lat = parseInt(parts[0]) / 1000;
+      var lon = parseInt(parts[1]) / 1000;
+      var count = grid[key];
 
-    document.getElementById('hmStats').textContent =
-      isEl ? `${result.elements.length} σημεία εμφανίζονται` : `${result.elements.length} points plotted`;
+      var radius = 8 + (count / maxCount) * 20;
+      var opacity = 0.2 + (count / maxCount) * 0.6;
+
+      var marker = L.circleMarker([lat, lon], {
+        radius: radius,
+        fillColor: '#6d4aff',
+        color: '#6d4aff',
+        weight: 0,
+        fillOpacity: opacity
+      }).addTo(map);
+
+      heatmapState.mapMarkers.push(marker);
+    });
+
+    var statsEl = document.getElementById('heatStats');
+    if (statsEl) statsEl.textContent = isEl ? elements.length + ' στοιχεία σε ' + Object.keys(grid).length + ' περιοχές' : elements.length + ' items in ' + Object.keys(grid).length + ' zones';
 
   } catch (err) {
     console.error('Heatmap error:', err);
-    alert(isEl ? 'Σφάλμα heatmap: ' + err.message : 'Heatmap error: ' + err.message);
+    alert((isEl ? 'Σφάλμα: ' : 'Heatmap error: ') + err.message);
   } finally {
     heatmapState.isLoading = false;
-    showHmSpinner(false);
   }
 }
 
-function clearHeatmap() {
-  heatmapState.circleMarkers.forEach(m => {
-    if (window.appState?.map) window.appState.map.removeLayer(m);
-  });
-  heatmapState.circleMarkers = [];
-}
-
-function showHmSpinner(show) {
-  const btn = document.getElementById('hmLoadBtn');
-  if (show) {
-    btn.disabled = true;
-    btn.textContent = getCurrentLang() === 'el' ? 'Φόρτωση...' : 'Loading...';
-  } else {
-    btn.disabled = false;
-    btn.textContent = getCurrentLang() === 'el' ? 'Δημιουργία Heatmap' : 'Generate Heatmap';
-  }
+function clearHeatMarkers() {
+  var map = getHmMap();
+  if (!map) return;
+  heatmapState.mapMarkers.forEach(function (m) { map.removeLayer(m); });
+  heatmapState.mapMarkers = [];
 }
 
 function _heatmapCleanup() {
   delete window.onMapClick_heatmap;
-  clearHeatmap();
-  heatmapState = { circleMarkers: [], isLoading: false, lastQuery: null };
+  clearHeatMarkers();
+  heatmapState = { mapMarkers: [], isLoading: false };
 }
-
 window._heatmapCleanup = _heatmapCleanup;

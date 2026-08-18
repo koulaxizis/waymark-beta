@@ -1,5 +1,6 @@
 /* =========================================================
    WAYMARK — Stylesheet
+   Privacy-first OSM PWA • Dark/Light themes
    ========================================================= */
 
 :root {
@@ -62,6 +63,10 @@ html, body {
   overflow: hidden;
 }
 
+/* =========================================================
+   HEADER
+   ========================================================= */
+
 #appHeader {
   position: absolute;
   top: 0; left: 0; right: 0;
@@ -72,7 +77,9 @@ html, body {
   align-items: center;
   justify-content: space-between;
   padding: 0 0.75rem;
-  z-index: 1100;
+  z-index: 1200;
+  opacity: 1;
+  transition: opacity 0.2s;
 }
 
 .app-logo {
@@ -110,6 +117,10 @@ html, body {
   border-color: var(--accent); color: var(--accent);
 }
 
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
 #appFooter {
   position: absolute;
   bottom: 0; left: 0; right: 0;
@@ -120,10 +131,16 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  z-index: 1100;
+  z-index: 1200;
   font-size: 0.65rem;
   color: var(--fg-muted);
+  opacity: 1;
+  transition: opacity 0.2s;
 }
+
+/* =========================================================
+   MAP
+   ========================================================= */
 
 #map {
   position: absolute;
@@ -132,9 +149,22 @@ html, body {
   left: 0; right: 0;
   z-index: 1;
   background: var(--bg);
+  overflow: hidden;
 }
 
-/* FIX: bottom ABOVE footer */
+/* Override Leaflet's bottom controls to not cover footer */
+.leaflet-bottom {
+  bottom: calc(var(--footer-h) + 5px) !important;
+}
+
+.leaflet-bottom.leaflet-right, .leaflet-bottom.leaflet-left {
+  margin-bottom: 0 !important;
+}
+
+/* =========================================================
+   LOCATION BUTTON
+   ========================================================= */
+
 .location-button {
   position: absolute;
   bottom: calc(var(--footer-h) + 10px);
@@ -156,6 +186,10 @@ html, body {
 
 .location-button:hover { border-color: var(--accent); transform: scale(1.08); }
 .location-button:active { transform: scale(0.92); }
+
+/* =========================================================
+   LEAFLET OVERRIDES
+   ========================================================= */
 
 .leaflet-container {
   background: var(--bg);
@@ -195,6 +229,10 @@ html, body {
 }
 
 .leaflet-control-attribution a { color: var(--accent) !important; }
+
+/* =========================================================
+   CONTROL PANELS
+   ========================================================= */
 
 .control-panel {
   position: absolute;
@@ -236,6 +274,10 @@ html, body {
 }
 
 .control-panel.bottom-right.active { display: flex; }
+
+/* =========================================================
+   PANEL HEADER / BODY
+   ========================================================= */
 
 .panel-header {
   display: flex;
@@ -287,6 +329,10 @@ html, body {
 .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 .panel-body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
+/* =========================================================
+   MODULE TOGGLES
+   ========================================================= */
+
 #moduleToggles { padding: 0.35rem; }
 .module-toggle-wrapper { margin-bottom: 0.2rem; }
 
@@ -330,6 +376,10 @@ html, body {
 .module-toggle-label { font-size: 0.8rem; color: var(--fg); flex: 1; }
 .module-toggle input:checked ~ .module-toggle-label { color: var(--accent); font-weight: 600; }
 
+/* =========================================================
+   LAYER CONTROLS
+   ========================================================= */
+
 #layerControls { padding: 0.35rem; display: flex; flex-direction: column; gap: 0.2rem; }
 
 .layer-btn {
@@ -353,9 +403,18 @@ html, body {
   font-weight: 600;
 }
 
+/* =========================================================
+   MODULE CONTENT
+   ========================================================= */
+
 .module-content { padding: 0.7rem; }
 .module-content h2 { display: none; }
 .module-form { display: flex; flex-direction: column; gap: 0.5rem; }
+
+/* =========================================================
+   FORMS
+   ========================================================= */
+
 .form-group { margin-bottom: 0.4rem; }
 
 .form-group label {
@@ -392,6 +451,10 @@ html, body {
   box-shadow: 0 0 0 2px var(--accent-light);
 }
 
+/* =========================================================
+   BUTTONS
+   ========================================================= */
+
 .btn {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
@@ -419,10 +482,17 @@ html, body {
 .btn-success { background: var(--success); color: white; border-color: var(--success); font-weight: 600; }
 .btn-success:hover { filter: brightness(1.1); border-color: var(--success); }
 .btn-success:disabled:hover { filter: none; }
+
 .btn-secondary { background: var(--bg); color: var(--fg); }
+
 .btn-danger { background: transparent; color: var(--danger); border-color: var(--danger); padding: 0.45rem 0.8rem; }
 .btn-danger:hover { background: var(--danger); color: white; }
+
 .btn-sm { padding: 0.35rem 0.55rem; font-size: 0.76rem; width: auto; }
+
+/* =========================================================
+   LOGIN BADGE
+   ========================================================= */
 
 .login-badge {
   font-size: 0.78rem;
@@ -440,6 +510,10 @@ html, body {
   border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
+/* =========================================================
+   RESULTS LIST
+   ========================================================= */
+
 .results-list { display: flex; flex-direction: column; gap: 0.2rem; overflow-y: auto; max-height: 280px; }
 
 .result-item {
@@ -456,11 +530,19 @@ html, body {
 .result-item strong { color: var(--fg); display: block; margin-bottom: 0.1rem; }
 .result-item small { color: var(--fg-muted); font-size: 0.7rem; }
 
+/* =========================================================
+   TABLES
+   ========================================================= */
+
 .poi-tags-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 0.4rem; }
 .poi-tags-table th, .poi-tags-table td { padding: 0.35rem 0.45rem; border-bottom: 1px solid var(--border); text-align: left; }
 .poi-tags-table th { color: var(--fg-muted); font-weight: 600; }
 .poi-actions { display: flex; gap: 0.2rem; margin-top: 0.4rem; }
 .poi-actions button { flex: 1; }
+
+/* =========================================================
+   NOTE DESCRIPTIONS
+   ========================================================= */
 
 .note-description {
   background: var(--bg);
@@ -471,6 +553,10 @@ html, body {
   font-size: 0.8rem;
   color: var(--fg-muted);
 }
+
+/* =========================================================
+   SPINNERS
+   ========================================================= */
 
 .spinner {
   width: 24px; height: 24px;
@@ -505,6 +591,10 @@ html, body {
 
 #loadingText { margin-top: 0.8rem; color: var(--fg-muted); font-size: 0.85rem; }
 
+/* =========================================================
+   MISC
+   ========================================================= */
+
 hr { border: none; border-top: 1px solid var(--border); margin: 0.4rem 0; }
 
 code {
@@ -516,6 +606,10 @@ code {
 }
 
 small { font-size: 0.76rem; }
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
 
 @media (max-width: 768px) {
   :root { --header-h: 40px; --footer-h: 22px; }
