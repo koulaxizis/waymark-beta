@@ -8,12 +8,10 @@
 
   const translations = {
     el: {
-      // App
       'app.title': 'Waymark',
-      'app.modules': 'Modules',
-      'app.layers': 'Layers',
+      'app.modules': 'Λειτουργίες',
+      'app.layers': 'Στρώματα',
 
-      // Module names
       'module.nominatim': 'Αναζήτηση',
       'module.poi_viewer': 'Προβολή POIs',
       'module.osm_editor': 'OSM Editor',
@@ -28,9 +26,8 @@
       'module.heatmap': 'Heatmap',
       'module.tags_lookup': 'Tags Lookup',
       'module.notes_browser': 'Notes Browser',
-      'module.tutorial': 'Tutorial',
+      'module.tutorial': 'Βοήθεια',
 
-      // Common
       'common.download': 'Κατέβασμα',
       'common.clear': 'Καθαρισμός',
       'common.error': 'Σφάλμα',
@@ -41,7 +38,6 @@
       'common.cancel': 'Άκυρο',
       'common.close': 'Κλείσιμο',
 
-      // OSM
       'osm.login': 'Σύνδεση με OSM',
       'osm.logged_in_as': 'Συνδεδεμένος',
       'osm.not_logged_in': 'Δεν είσαι συνδεδεμένος',
@@ -73,7 +69,7 @@
       'module.heatmap': 'Heatmap',
       'module.tags_lookup': 'Tags Lookup',
       'module.notes_browser': 'Notes Browser',
-      'module.tutorial': 'Tutorial',
+      'module.tutorial': 'Help',
 
       'common.download': 'Download',
       'common.clear': 'Clear',
@@ -100,7 +96,6 @@
 
   let currentLang = 'en';
 
-  // Auto-detect language
   function detectLanguage() {
     const stored = localStorage.getItem('waymark_lang');
     if (stored && (stored === 'el' || stored === 'en')) return stored;
@@ -129,9 +124,10 @@
     }
   }
 
-  // Expose globally
+  // Expose globally — including getLanguage alias for app.js compatibility
   window.t = t;
   window.getCurrentLang = getCurrentLang;
+  window.getLanguage = getCurrentLang;
   window.setLanguage = setLanguage;
 
 })();

@@ -1,314 +1,354 @@
 /* =========================================================
    WAYMARK — Track Recorder Module
-   GPS track recording and GPX export/upload.
+   Record GPS tracks from device geolocation and export to GPX.
    ========================================================= */
 
-let trackRecorderState = {
-  isRecording: false,
+var trackRecorderState = {
+  recording: false,
   trackPoints: [],
-  watchId: null,
   polyline: null,
+  watchId: null,
   startTime: null,
-  totalDistance: 0,
+  endTime: null,
 };
+
+function getTrMap() { return window.appState ? window.appState.map : null; }
 
 function initTrackRecorder(map, container, appState) {
   renderTrackRecorderUI(container);
-
-  function handleMapClick(lat, lng) {
-    // Manual point addition when not recording
-    if (!trackRecorderState.isRecording) {
-      addManualPoint(lat, lng);
-    }
-  }
-
-  window.onMapClick_trackRecorder = handleMapClick;
+  window.onMapClick_trackRecorder = function (lat, lng) {};
 }
 
 function renderTrackRecorderUI(container) {
-  const isEl = getCurrentLang() === 'el';
+  var isEl = getCurrentLang() === 'el';
 
-  container.innerHTML = `
-    <div class="track-recorder-ui">
-      <div id="trStatus" class="note-description">
-        ${isEl ? 'Η εγγραφή είναι σβηστή.' : 'Recording is off.'}
-      </div>
+  container.innerHTML =
+    '<div class="track-recorder-ui">' +
+    '  <div class="note-description">' + (isEl
+      ? 'Καταγράφει ταξίδι με τη χρήση του GPS της συσκευής. Πρέπει να επιτρέψεις πρόσβαση στη γεωτοποθεσία.'
+      : 'Records a trip using the device GPS. You must allow geolocation access.') + '</div>' +
+    '  <hr>' +
+    '  <div id="trStatus" class="note-description" style="text-align:center;font-weight:600;"></div>' +
+    '  <div id="trTimer" class="note-description" style="text-align:center;color:var(--accent);"></div>' +
+    '  <hr>' +
+    '  <button id="trStartBtn" class="btn btn-success">▶️ ' +
+    (isEl ? 'Εκκίνηση Καταγραφής' : 'Start Recording') + '</button>' +
+    '  <button id="trStopBtn" class="btn btn-danger" style="display:none;">⏹️ ' +
+    (isEl ? 'Διακοπή' : 'Stop') + '</button>' +
+    '  <button id="trExportBtn" class="btn btn-primary" style="display:none;" disabled>📥 ' +
+    (isEl ? 'Εξαγωγή GPX' : 'Export GPX') + '</button>' +
+    '  <button id="trClearBtn" class="btn btn-secondary">🗑️ ' +
+    (isEl ? 'Καθαρισμός' : 'Clear') + '</button>' +
+    '  <hr>' +
+    '  <div id="trInfo" class="note-description">' +
+    (isEl ? 'Μήκος: 0 m • Σημεία: 0' : 'Length: 0 m • Points: 0') + '</div>' +
+    '</div>';
 
-      <div id="trStats" style="display:none;">
-        <div class="note-description">
-          <strong>⏱️ ${isEl ? 'Χρόνος:' : 'Time:'}</strong> <span id="trTime">0:00</span><br/>
-          <strong>📍 ${isEl ? 'Σημεία:' : 'Points:'}</strong> <span id="trPoints">0</span><br/>
-          <strong>📏 ${isEl ? 'Απόσταση:' : 'Distance:'}</strong> <span id="trDistance">0.00 km</span>
-        </div>
-      </div>
+  var startBtn = document.getElementById('trStartBtn');
+  var stopBtn = document.getElementById('trStopBtn');
+  var exportBtn = document.getElementById('trExportBtn');
+  var clearBtn = document.getElementById('trClearBtn');
 
-      <button id="trStartBtn" class="btn btn-success">
-        ⏺️ ${isEl ? 'Έναρξη' : 'Start'}
-      </button>
-      <button id="trStopBtn" class="btn btn-danger" style="display:none;">
-        ⏹️ ${isEl ? 'Διακοπή' : 'Stop'}
-      </button>
+  if (startBtn) startBtn.addEventListener('click', startRecording);
+  if (stopBtn) stopBtn.addEventListener('click', stopRecording);
+  if (exportBtn) exportBtn.addEventListener('click', exportGPX);
+  if (clearBtn) clearBtn.addEventListener('click', clearTrackRecorder);
 
-      <button id="trAddManualBtn" class="btn btn-secondary btn-sm">
-        📍 ${isEl ? 'Χειροκίνητο σημείο' : 'Manual point'}
-      </button>
+  updateTrStatus();
+}
 
-      <button id="trDownloadBtn" class="btn btn-primary" disabled>
-        📥 ${isEl ? 'Κατέβασμα GPX' : 'Download GPX'}
-      </button>
-      <button id="trUploadBtn" class="btn btn-success" disabled>
-        📤 ${isEl ? 'Ανέβασμα στο OSM' : 'Upload to OSM'}
-      </button>
-      <button id="trClearBtn" class="btn btn-danger">🗑️ ${isEl ? 'Καθαρισμός' : 'Clear'}</button>
-    </div>
-  `;
+function updateTrStatus() {
+  var statusEl = document.getElementById('trStatus');
+  var isEl = getCurrentLang() === 'el';
 
-  document.getElementById('trStartBtn').addEventListener('click', startRecording);
-  document.getElementById('trStopBtn').addEventListener('click', stopRecording);
-  document.getElementById('trAddManualBtn').addEventListener('click', () => {
-    showNotification(getCurrentLang() === 'el' ? 'Κάνε κλικ στον χάρτη...' : 'Click on map...', 'info');
-  });
-  document.getElementById('trDownloadBtn').addEventListener('click', downloadGPX);
-  document.getElementById('trUploadBtn').addEventListener('click', uploadGPX);
-  document.getElementById('trClearBtn').addEventListener('click', clearTrack);
+  if (trackRecorderState.recording) {
+    if (statusEl) statusEl.textContent = isEl ? '🔴 Καταγραφή...' : '🔴 Recording...';
+  } else if (trackRecorderState.trackPoints.length > 0) {
+    if (statusEl) statusEl.textContent = isEl ? '✅ Καταγεγραμμένο' : '✅ Recorded';
+  } else {
+    if (statusEl) statusEl.textContent = isEl ? '📍 Έτοιμος' : '📍 Ready';
+  }
 }
 
 function startRecording() {
-  if (trackRecorderState.isRecording) return;
+  var isEl = getCurrentLang() === 'el';
 
-  trackRecorderState.isRecording = true;
-  trackRecorderState.startTime = Date.now();
-  trackRecorderState.trackPoints = [];
-  trackRecorderState.totalDistance = 0;
-
-  document.getElementById('trStartBtn').style.display = 'none';
-  document.getElementById('trStopBtn').style.display = 'block';
-  document.getElementById('trStats').style.display = 'block';
-  document.getElementById('trStatus').textContent = getCurrentLang() === 'el' ? '🔴 ΕΓΓΡΑΦΗ...' : '🔴 RECORDING...';
-
-  // Start GPS watching
-  if (navigator.geolocation) {
-    trackRecorderState.watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        addTrackPoint(lat, lon, pos.coords.accuracy, pos.timestamp);
-      },
-      (err) => {
-        console.error('GPS error:', err);
-        showNotification(getCurrentLang() === 'el' ? 'Σφάλμα GPS: ' + err.message : 'GPS error: ' + err.message, 'critical');
-      },
-      { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
-    );
-  } else {
-    showNotification(getCurrentLang() === 'el' ? 'Δεν υπάρχει GPS' : 'No GPS available', 'critical');
-    stopRecording();
+  if (!navigator.geolocation) {
+    alert(isEl ? 'Η γεωτοποθεσία δεν υποστηρίζεται' : 'Geolocation not supported');
+    return;
   }
 
-  // Update timer
-  trackRecorderState.timerInterval = setInterval(updateTimer, 1000);
+  if (trackRecorderState.recording) return;
+
+  trackRecorderState.recording = true;
+  trackRecorderState.startTime = new Date();
+  trackRecorderState.trackPoints = [];
+
+  if (trackRecorderState.watchId) {
+    navigator.geolocation.clearWatch(trackRecorderState.watchId);
+  }
+
+  var options = {
+    enableHighAccuracy: true,
+    timeout: 10000,
+    maximumAge: 0,
+  };
+
+  trackRecorderState.watchId = navigator.geolocation.watchPosition(
+    function (pos) {
+      var lat = pos.coords.latitude;
+      var lon = pos.coords.longitude;
+      var accuracy = pos.coords.accuracy;
+      var timestamp = pos.timestamp || Date.now();
+
+      trackRecorderState.trackPoints.push({
+        lat: lat,
+        lng: lon,
+        acc: accuracy,
+        time: timestamp,
+      });
+
+      updateTrackLine();
+      updateTrInfo();
+      updateTrTimer();
+    },
+    function (err) {
+      console.error('Geolocation error:', err);
+      var msg = isEl ? 'Σφάλμα GPS: ' + err.message : 'GPS Error: ' + err.message;
+      showNotification(msg, 'warning');
+    },
+    options
+  );
+
+  updateButtonStates();
+  updateTrStatus();
 }
 
 function stopRecording() {
-  if (!trackRecorderState.isRecording) return;
+  if (!trackRecorderState.recording) return;
 
-  trackRecorderState.isRecording = false;
+  trackRecorderState.recording = false;
+  trackRecorderState.endTime = new Date();
 
-  if (trackRecorderState.watchId !== null) {
+  if (trackRecorderState.watchId) {
     navigator.geolocation.clearWatch(trackRecorderState.watchId);
     trackRecorderState.watchId = null;
   }
 
-  if (trackRecorderState.timerInterval) {
-    clearInterval(trackRecorderState.timerInterval);
-    trackRecorderState.timerInterval = null;
+  var exportBtn = document.getElementById('trExportBtn');
+  if (exportBtn) {
+    exportBtn.disabled = trackRecorderState.trackPoints.length === 0;
+    exportBtn.style.display = 'inline-block';
   }
 
-  document.getElementById('trStartBtn').style.display = 'block';
-  document.getElementById('trStopBtn').style.display = 'none';
-  document.getElementById('trStatus').textContent = getCurrentLang() === 'el' ? 'Η εγγραφή σταμάτησε.' : 'Recording stopped.';
-
-  document.getElementById('trDownloadBtn').disabled = trackRecorderState.trackPoints.length === 0;
-  document.getElementById('trUploadBtn').disabled = trackRecorderState.trackPoints.length === 0 || !sessionStorage.getItem('osm_access_token');
+  updateButtonStates();
+  updateTrStatus();
 }
 
-function addTrackPoint(lat, lon, accuracy, timestamp) {
-  const point = { lat, lon, accuracy, timestamp };
+function updateButtonStates() {
+  var startBtn = document.getElementById('trStartBtn');
+  var stopBtn = document.getElementById('trStopBtn');
+  var exportBtn = document.getElementById('trExportBtn');
 
-  if (trackRecorderState.trackPoints.length > 0) {
-    const last = trackRecorderState.trackPoints[trackRecorderState.trackPoints.length - 1];
-    const dist = calculateDistance(last.lat, last.lon, lat, lon);
-    trackRecorderState.totalDistance += dist;
+  if (startBtn) startBtn.style.display = trackRecorderState.recording ? 'none' : 'inline-block';
+  if (stopBtn) stopBtn.style.display = trackRecorderState.recording ? 'inline-block' : 'none';
+  if (exportBtn) {
+    exportBtn.style.display = (!trackRecorderState.recording && trackRecorderState.trackPoints.length > 0)
+      ? 'inline-block' : 'none';
+    exportBtn.disabled = trackRecorderState.trackPoints.length === 0;
   }
+}
 
-  trackRecorderState.trackPoints.push(point);
+function updateTrackLine() {
+  var map = getTrMap();
+  if (!map) return;
 
-  // Update polyline
   if (trackRecorderState.polyline) {
-    window.appState.map.removeLayer(trackRecorderState.polyline);
+    map.removeLayer(trackRecorderState.polyline);
+    trackRecorderState.polyline = null;
   }
 
-  trackRecorderState.polyline = L.polyline(
-    trackRecorderState.trackPoints.map(p => [p.lat, p.lon]),
-    {
+  if (trackRecorderState.trackPoints.length >= 2) {
+    var latlngs = trackRecorderState.trackPoints.map(function (p) {
+      return [p.lat, p.lng];
+    });
+    trackRecorderState.polyline = L.polyline(latlngs, {
       color: '#6d4aff',
-      weight: 3,
+      weight: 4,
       opacity: 0.8,
+    }).addTo(map);
+
+    // Fit bounds if recording started (first point)
+    if (trackRecorderState.trackPoints.length === 2) {
+      map.fitBounds(trackRecorderState.polyline.getBounds(), { padding: [50, 50] });
     }
-  ).addTo(window.appState.map);
-
-  // Update stats
-  document.getElementById('trPoints').textContent = trackRecorderState.trackPoints.length;
-  document.getElementById('trDistance').textContent = (trackRecorderState.totalDistance / 1000).toFixed(2) + ' km';
+  } else if (trackRecorderState.trackPoints.length === 1) {
+    var p = trackRecorderState.trackPoints[0];
+    trackRecorderState.polyline = L.circleMarker([p.lat, p.lng], {
+      radius: 8,
+      fillColor: trackRecorderState.recording ? '#ffb143' : '#6d4aff',
+      color: 'white',
+      weight: 2,
+      fillOpacity: 0.8,
+    }).addTo(map);
+  }
 }
 
-function addManualPoint(lat, lng) {
-  addTrackPoint(lat, lng, 0, Date.now());
+function updateTrInfo() {
+  var count = trackRecorderState.trackPoints.length;
+  var length = calculateTrackDistance(trackRecorderState.trackPoints);
+  var isEl = getCurrentLang() === 'el';
+
+  var infoEl = document.getElementById('trInfo');
+  if (!infoEl) return;
+
+  infoEl.textContent = isEl
+    ? 'Μήκος: ' + Math.round(length) + ' m • Σημεία: ' + count
+    : 'Length: ' + Math.round(length) + ' m • Points: ' + count;
 }
 
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371e3;
-  const φ1 = lat1 * Math.PI / 180;
-  const φ2 = lat2 * Math.PI / 180;
-  const Δφ = (lat2 - lat1) * MathPC / 180;
-  const Δλ = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+function calculateTrackDistance(points) {
+  if (points.length < 2) return 0;
+
+  var total = 0;
+  for (var i = 1; i < points.length; i++) {
+    var p1 = points[i - 1];
+    var p2 = points[i];
+    total += distanceBetween(p1, p2);
+  }
+  return total;
+}
+
+function distanceBetween(p1, p2) {
+  var R = 6371000;
+  var dLat = deg2rad(p2.lat - p1.lat);
+  var dLon = deg2rad(p2.lng - p1.lng);
+  var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(deg2rad(p1.lat)) * Math.cos(deg2rad(p2.lat)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
 
-function updateTimer() {
-  if (!trackRecorderState.startTime) return;
-
-  const elapsed = Math.floor((Date.now() - trackRecorderState.startTime) / 1000);
-  const mins = Math.floor(elapsed / 60);
-  const secs = elapsed % 60;
-
-  document.getElementById('trTime').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+function deg2rad(deg) {
+  return deg * (Math.PI / 180);
 }
 
-function downloadGPX() {
-  if (trackRecorderState.trackPoints.length === 0) return;
+function updateTrTimer() {
+  var timerEl = document.getElementById('trTimer');
+  if (!timerEl) return;
 
-  const isEl = getCurrentLang() === 'el';
-  const trkpts = trackRecorderState.trackPoints.map(p => {
-    const dt = new Date(p.timestamp).toISOString();
-    return `      <trkpt lat="${p.lat}" lon="${p.lon}"><ele>0</ele><time>${dt}</time></trkpt>`;
-  }).join('\n');
-
-  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Waymark" xmlns="http://www.topografix.com/GPX/1/1">
-  <metadata>
-    <name>Waymark Track</name>
-    <time>${new Date().toISOString()}</time>
-  </metadata>
-  <trk>
-    <name>Waymark Track</name>
-    <trkseg>
-${trkpts}
-    </trkseg>
-  </trk>
-</gpx>`;
-
-  downloadFile(gpx, `waymark-track-${Date.now()}.gpx`, 'application/gpx+xml');
-  showNotification(isEl ? 'GPX κατέβηκε!' : 'GPX downloaded!', 'success');
-}
-
-async function uploadGPX() {
-  const isEl = getCurrentLang() === 'el';
-  const token = sessionStorage.getItem('osm_access_token');
-
-  if (!token) {
-    alert(isEl ? 'Σύνδεσε πρώτα!' : 'Please login first!');
+  if (!trackRecorderState.startTime) {
+    timerEl.textContent = '';
     return;
   }
 
-  if (trackRecorderState.trackPoints.length === 0) return;
+  var now = trackRecorderState.recording ? new Date() : trackRecorderState.endTime;
+  var diff = (now - trackRecorderState.startTime) / 1000;
 
-  const description = prompt(isEl ? 'Περιγραφή διαδρομής:' : 'Track description:', 'Waymark track');
-  if (!description) return;
+  var seconds = diff % 60;
+  var minutes = Math.floor(diff / 60) % 60;
+  var hours = Math.floor(diff / 3600);
 
-  const cfg = window.WAYMARK_CONFIG || {};
-  const proxyUrl = cfg.PROXY_URL;
+  var isEl = getCurrentLang() === 'el';
+  var label = isEl ? 'Διάρκεια:' : 'Duration:';
 
-  // Build GPX
-  const trkpts = trackRecorderState.trackPoints.map(p => {
-    const dt = new Date(p.timestamp).toISOString();
-    return `      <trkpt lat="${p.lat}" lon="${p.lon}"><ele>0</ele><time>${dt}</time></trkpt>`;
-  }).join('\n');
-
-  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Waymark" xmlns="http://www.topografix.com/GPX/1/1">
-  <metadata><name>Waymark Track</name><time>${new Date().toISOString()}</time></metadata>
-  <trk><name>${escapeXml(description)}</name><trkseg>
-${trkpts}
-  </trkseg></trk>
-</gpx>`;
-
-  try {
-    const response = await fetch(proxyUrl + '/api/0.6/gpx/create', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/xml'
-      },
-      body: gpx
-    });
-
-    if (response.ok) {
-      alert(isEl ? '✅ Η διαδρομή ανέβηκε!' : '✅ Track uploaded!');
-      clearTrack();
-    } else {
-      const txt = await response.text();
-      alert(isEl ? 'Αποτυχία: ' + txt : 'Failed: ' + txt);
-    }
-  } catch (err) {
-    alert(isEl ? 'Σφάλμα δικτύου: ' + err.message : 'Network error: ' + err.message);
+  if (hours > 0) {
+    timerEl.textContent = label + ' ' + hours + 'h ' + minutes + 'm ' + seconds.toFixed(0) + 's';
+  } else if (minutes > 0) {
+    timerEl.textContent = label + ' ' + minutes + 'm ' + seconds.toFixed(0) + 's';
+  } else {
+    timerEl.textContent = label + ' ' + seconds.toFixed(1) + 's';
   }
 }
 
-function clearTrack() {
-  if (trackRecorderState.polyline) {
-    window.appState.map.removeLayer(trackRecorderState.polyline);
-  }
-  trackRecorderState = {
-    isRecording: false,
-    trackPoints: [],
-    watchId: null,
-    polyline: null,
-    startTime: null,
-    totalDistance: 0,
-  };
+function exportGPX() {
+  var isEl = getCurrentLang() === 'el';
 
-  document.getElementById('trStartBtn').style.display = 'block';
-  document.getElementById('trStopBtn').style.display = 'none';
-  document.getElementById('trStats').style.display = 'none';
-  document.getElementById('trStatus').textContent = getCurrentLang() === 'el' ? 'Η εγγραφή είναι σβηστή.' : 'Recording is off.';
-  document.getElementById('trDownloadBtn').disabled = true;
-  document.getElementById('trUploadBtn').disabled = true;
+  if (trackRecorderState.trackPoints.length === 0) {
+    alert(isEl ? 'Κανένα σημείο για εξαγωγή' : 'No points to export');
+    return;
+  }
+
+  var now = new Date().toISOString();
+  var fileName = 'waymark-track-' + Date.now();
+
+  var trkpts = trackRecorderState.trackPoints.map(function (p) {
+    return '      <trkpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lng.toFixed(7) + '">' +
+      '<ele>0</ele><time>' + new Date(p.time).toISOString() + '</time></trkpt>';
+  }).join('\n');
+
+  var gpx = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<gpx version="1.1" creator="Waymark" xmlns="http://www.topografix.com/GPX/1/1">\n' +
+    '  <metadata>\n' +
+    '    <name>' + escapeXml(fileName) + '</name>\n' +
+    '    <desc>Recorded with Waymark</desc>\n' +
+    '    <time>' + now + '</time>\n' +
+    '  </metadata>\n' +
+    '  <trk>\n' +
+    '    <name>Recorded Track</name>\n' +
+    '    <type>track</type>\n' +
+    '    <trkseg>\n' + trkpts + '\n' +
+    '    </trkseg>\n' +
+    '  </trk>\n' +
+    '</gpx>';
+
+  downloadFile(gpx, fileName + '.gpx', 'application/gpx+xml');
+  showNotification(isEl ? 'GPX κατέβηκε!' : 'GPX downloaded!', 'success');
+}
+
+function clearTrackRecorder() {
+  var map = getTrMap();
+
+  if (trackRecorderState.watchId) {
+    navigator.geolocation.clearWatch(trackRecorderState.watchId);
+    trackRecorderState.watchId = null;
+  }
+
+  if (map && trackRecorderState.polyline) {
+    map.removeLayer(trackRecorderState.polyline);
+    trackRecorderState.polyline = null;
+  }
+
+  trackRecorderState.recording = false;
+  trackRecorderState.trackPoints = [];
+  trackRecorderState.startTime = null;
+  trackRecorderState.endTime = null;
+
+  var exportBtn = document.getElementById('trExportBtn');
+  var timerEl = document.getElementById('trTimer');
+  var infoEl = document.getElementById('trInfo');
+
+  if (exportBtn) exportBtn.style.display = 'none';
+  if (timerEl) timerEl.textContent = '';
+  if (infoEl) {
+    var isEl = getCurrentLang() === 'el';
+    infoEl.textContent = isEl ? 'Μήκος: 0 m • Σημεία: 0' : 'Length: 0 m • Points: 0';
+  }
+
+  updateTrStatus();
+  updateButtonStates();
 }
 
 function _trackRecorderCleanup() {
   delete window.onMapClick_trackRecorder;
-  if (trackRecorderState.isRecording) {
-    if (trackRecorderState.watchId !== null && navigator.geolocation) {
-      navigator.geolocation.clearWatch(trackRecorderState.watchId);
-    }
-    if (trackRecorderState.timerInterval) {
-      clearInterval(trackRecorderState.timerInterval);
-    }
+
+  if (trackRecorderState.watchId) {
+    navigator.geolocation.clearWatch(trackRecorderState.watchId);
   }
-  if (window.appState?.map && trackRecorderState.polyline) {
-    window.appState.map.removeLayer(trackRecorderState.polyline);
+
+  var map = getTrMap();
+  if (map && trackRecorderState.polyline) {
+    map.removeLayer(trackRecorderState.polyline);
   }
+
   trackRecorderState = {
-    isRecording: false,
-    trackEditorState: [],
+    recording: false,
     trackPoints: [],
-    watchId: null,
     polyline: null,
+    watchId: null,
     startTime: null,
-    totalDistance: 0,
+    endTime: null,
   };
 }
 

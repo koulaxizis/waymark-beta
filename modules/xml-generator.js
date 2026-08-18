@@ -1,157 +1,239 @@
-/* =========================================================
-   WAYMARK — XML Generator Module
-   Generate OSM XML / OSC / GPX from manual input.
-   ========================================================= */
+/* WAYMARK - XML Generator Module */
 
-var xmlGeneratorState = {
-  generatedXml: '',
-  nodeCount: 0,
-  wayCount: 0
+var xmlGenState = {
+  points: [],
+  polyline: null
 };
 
-var xmlNodes = [];
-var xmlWays = [];
+var XML_SUBTYPES = {
+  highway: ['footway', 'path', 'track', 'residential', 'service', 'pedestrian', 'cycleway', 'steps', 'living_street'],
+  amenity: ['bench', 'cafe', 'restaurant', 'parking', 'pharmacy', 'school', 'atm', 'post_box'],
+  building: ['yes', 'apartments', 'house', 'detached', 'garage', 'shed', 'commercial', 'industrial'],
+  leisure: ['park', 'pitch', 'playground', 'swimming_pool', 'garden', 'sports_centre']
+};
 
-function initXmlGenerator(map, container, appState) {
-  renderXmlGeneratorUI(container);
-
-  function handleMapClick(lat, lng) {
-    addXmlNode(lat, lng);
-  }
-
-  window.onMapClick_xmlGenerator = handleMapClick;
+function getXgMap() {
+  return window.appState ? window.appState.map : null;
 }
 
-function renderXmlGeneratorUI(container) {
+function initXmlGenerator(map, container, appState) {
+  renderXmlGenUI(container);
+  window.onMapClick_xmlGenerator = function(lat, lng) {
+    addXmlPoint(lat, lng);
+  };
+}
+
+function renderXmlGenUI(container) {
   var isEl = getCurrentLang() === 'el';
 
   container.innerHTML =
-    '<div class="xml-generator-ui">' +
-    '  <h3>' + (isEl ? 'Δημιουργία XML' : 'Generate XML') + '</h3>' +
+    '<div class="xml-gen-ui">' +
+    '  <div class="form-group"><label>' + (isEl ? 'Όνομα:' : 'Name:') + '</label>' +
+    '    <input type="text" id="xgName" class="form-control" placeholder="' +
+    (isEl ? 'π.χ. Νέο Μονοπάτι' : 'e.g. New Path') + '">' +
+    '  </div>' +
     '  <div class="form-group"><label>' + (isEl ? 'Τύπος:' : 'Type:') + '</label>' +
     '    <select id="xgType" class="form-control">' +
-    '      <option value="osm">OSM XML</option>' +
-    '      <option value="osc">OSC (Changeset)</option>' +
-    '      <option value="gpx">GPX</option>' +
+    '      <option value="highway">Highway</option>' +
+    '      <option value="amenity">Amenity</option>' +
+    '      <option value="building">Building</option>' +
+    '      <option value="leisure">Leisure</option>' +
     '    </select>' +
     '  </div>' +
-    '  <div class="form-group"><label>' + (isEl ? 'Σχόλιο (για OSC):' : 'Comment (for OSC):') + '</label>' +
-    '    <input type="text" id="xgComment" class="form-control" placeholder="' + (isEl ? 'π.χ. add nodes' : 'e.g. add nodes') + '">' +
+    '  <div class="form-group"><label>' + (isEl ? 'Υποτύπος:' : 'Subtype:') + '</label>' +
+    '    <input type="text" id="xgSubtype" list="xgSubtypes" class="form-control" placeholder="' +
+    (isEl ? 'π.χ. footway' : 'e.g. footway') + '">' +
+    '    <datalist id="xgSubtypes"></datalist>' +
     '  </div>' +
-    '  <button id="xgGenerateBtn" class="btn btn-success">📄 ' + (isEl ? 'Δημιουργία XML' : 'Generate XML') + '</button>' +
-    '  <button id="xgDownloadBtn" class="btn btn-primary" disabled>📥 ' + (isEl ? 'Κατέβασμα' : 'Download') + '</button>' +
-    '  <button id="xgClearBtn" class="btn btn-danger">🗑️ ' + (isEl ? 'Καθαρισμός' : 'Clear') + '</button>' +
+    '  <button id="xgAddBtn" class="btn btn-success">➕ ' +
+    (isEl ? 'Προσθήκη (κλικ χάρτη)' : 'Add Point (map click)') + '</button>' +
+    '  <button id="xgPreviewBtn" class="btn btn-primary">👁️ ' +
+    (isEl ? 'Προεπισκόπηση' : 'Preview') + '</button>' +
+    '  <button id="xgDownloadBtn" class="btn btn-primary" disabled>📥 ' +
+    (isEl ? 'Κατέβασμα XML' : 'Download XML') + '</button>' +
+    '  <button id="xgClearBtn" class="btn btn-danger">🗑️ ' +
+    (isEl ? 'Καθαρισμός' : 'Clear') + '</button>' +
     '  <hr>' +
-    '  <div id="xgStats" class="note-description">' + (isEl ? '0 nodes, 0 ways' : '0 nodes, 0 ways') + '</div>' +
-    '  <div id="xgPreview" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.5rem;font-family:monospace;font-size:0.75rem;max-height:200px;overflow:auto;margin-top:0.5rem;white-space:pre-wrap;"></div>' +
+    '  <div id="xgInfo" class="note-description">' + (isEl ? 'Κανένα σημείο' : 'No points') + '</div>' +
+    '  <div id="xgOutput" style="display:none;">' +
+    '    <textarea id="xgXmlText" rows="10" class="form-control" readonly style="font-family:monospace;font-size:0.8rem;"></textarea>' +
+    '  </div>' +
     '</div>';
 
-  document.getElementById('xgGenerateBtn').addEventListener('click', generateXml);
-  document.getElementById('xgDownloadBtn').addEventListener('click', downloadXml);
-  document.getElementById('xgClearBtn').addEventListener('click', clearXmlGenerator);
+  var typeSel = document.getElementById('xgType');
+  if (typeSel) typeSel.addEventListener('change', updateXgSubtypes);
+
+  var addBtn = document.getElementById('xgAddBtn');
+  var previewBtn = document.getElementById('xgPreviewBtn');
+  var downloadBtn = document.getElementById('xgDownloadBtn');
+  var clearBtn = document.getElementById('xgClearBtn');
+
+  if (addBtn) addBtn.addEventListener('click', function() {
+    showNotification(getCurrentLang() === 'el' ? 'Κάνε κλικ στον χάρτη' : 'Click on map', 'info');
+  });
+  if (previewBtn) previewBtn.addEventListener('click', previewXml);
+  if (downloadBtn) downloadBtn.addEventListener('click', downloadXml);
+  if (clearBtn) clearBtn.addEventListener('click', clearXmlGen);
+
+  updateXgSubtypes();
 }
 
-function addXmlNode(lat, lng) {
-  var id = -1 - xmlNodes.length;
-  xmlNodes.push({ id: id, lat: lat, lon: lng, tags: {} });
-  xmlGeneratorState.nodeCount = xmlNodes.length;
-  updateXmlStats();
-  showNotification(getCurrentLang() === 'el' ? 'Node προστέθηκε (' + xmlNodes.length + ')' : 'Node added (' + xmlNodes.length + ')', 'info');
+function updateXgSubtypes() {
+  var typeEl = document.getElementById('xgType');
+  if (!typeEl) return;
+  var type = typeEl.value;
+  var datalist = document.getElementById('xgSubtypes');
+  if (!datalist) return;
+
+  var subtypes = XML_SUBTYPES[type] || [];
+  datalist.innerHTML = '';
+  subtypes.forEach(function(sub) {
+    var option = document.createElement('option');
+    option.value = sub;
+    datalist.appendChild(option);
+  });
 }
 
-function generateXml() {
-  var type = document.getElementById('xgType').value;
+function addXmlPoint(lat, lng) {
+  xmlGenState.points.push({ lat: lat, lng: lng });
+  renderXgPolyline();
+  updateXgInfo();
+}
+
+function renderXgPolyline() {
+  var map = getXgMap();
+  if (!map) return;
+
+  if (xmlGenState.polyline) {
+    map.removeLayer(xmlGenState.polyline);
+    xmlGenState.polyline = null;
+  }
+
+  if (xmlGenState.points.length >= 2) {
+    var latlngs = xmlGenState.points.map(function(p) { return [p.lat, p.lng]; });
+    xmlGenState.polyline = L.polyline(latlngs, {
+      color: '#6d4aff',
+      weight: 3,
+      dashArray: '6 4',
+      opacity: 0.8
+    }).addTo(map);
+  } else if (xmlGenState.points.length === 1) {
+    xmlGenState.polyline = L.circleMarker([xmlGenState.points[0].lat, xmlGenState.points[0].lng], {
+      radius: 6,
+      fillColor: '#6d4aff',
+      color: 'white',
+      weight: 1,
+      fillOpacity: 0.8
+    }).addTo(map);
+  }
+}
+
+function updateXgInfo() {
   var isEl = getCurrentLang() === 'el';
+  var info = document.getElementById('xgInfo');
+  if (!info) return;
+  var count = xmlGenState.points.length;
+  info.textContent = isEl ? count + ' σημεία' : count + ' points';
 
-  if (xmlNodes.length === 0 && xmlWays.length === 0) {
-    alert(isEl ? 'Πρόσθεσε nodes (κλικ στο χάρτη)' : 'Add nodes first (click on map)');
-    return;
+  var dlBtn = document.getElementById('xgDownloadBtn');
+  var pvBtn = document.getElementById('xgPreviewBtn');
+  if (dlBtn) dlBtn.disabled = count === 0;
+  if (pvBtn) pvBtn.disabled = count === 0;
+}
+
+function buildXml() {
+  if (xmlGenState.points.length === 0) return '';
+
+  var nameEl = document.getElementById('xgName');
+  var typeEl = document.getElementById('xgType');
+  var subEl = document.getElementById('xgSubtype');
+
+  var name = nameEl ? nameEl.value.trim() : '';
+  var type = typeEl ? typeEl.value : 'highway';
+  var subtype = subEl ? subEl.value.trim() : '';
+
+  var nodesXml = xmlGenState.points.map(function(p, i) {
+    var id = -(i + 1);
+    return '    <node id="' + id + '" lat="' + p.lat.toFixed(7) + '" lon="' + p.lng.toFixed(7) + '" version="0" />';
+  }).join('\n');
+
+  var wayXml = '';
+  if (xmlGenState.points.length >= 2) {
+    var ndRefs = xmlGenState.points.map(function(p, i) {
+      return '      <nd ref="' + (-(i + 1)) + '" />';
+    }).join('\n');
+
+    var wayTags = '';
+    if (type && subtype) {
+      wayTags += '      <tag k="' + escapeXml(type) + '" v="' + escapeXml(subtype) + '" />\n';
+    }
+    if (name) {
+      wayTags += '      <tag k="name" v="' + escapeXml(name) + '" />\n';
+    }
+    wayTags += '      <tag k="created_by" v="Waymark" />';
+
+    wayXml = '    <way id="-1" version="0">\n' + ndRefs + '\n' + wayTags + '\n    </way>';
   }
 
-  var xml = '';
+  var lats = xmlGenState.points.map(function(p) { return p.lat; });
+  var lngs = xmlGenState.points.map(function(p) { return p.lng; });
+  var minLat = Math.min.apply(null, lats);
+  var maxLat = Math.max.apply(null, lats);
+  var minLng = Math.min.apply(null, lngs);
+  var maxLng = Math.max.apply(null, lngs);
 
-  if (type === 'osm') {
-    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<osm version="0.6" generator="Waymark">\n';
-    xmlNodes.forEach(function (n) {
-      xml += '  <node id="' + n.id + '" lat="' + n.lat + '" lon="' + n.lon + '" version="1">\n';
-      Object.keys(n.tags).forEach(function (k) {
-        xml += '    <tag k="' + escapeXml(k) + '" v="' + escapeXml(n.tags[k]) + '"/>\n';
-      });
-      xml += '  </node>\n';
-    });
-    xmlWays.forEach(function (w) {
-      xml += '  <way id="' + w.id + '" version="1">\n';
-      w.nodes.forEach(function (ref) {
-        xml += '    <nd ref="' + ref + '"/>\n';
-      });
-      Object.keys(w.tags).forEach(function (k) {
-        xml += '    <tag k="' + escapeXml(k) + '" v="' + escapeXml(w.tags[k]) + '"/>\n';
-      });
-      xml += '  </way>\n';
-    });
-    xml += '</osm>';
-  } else if (type === 'osc') {
-    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<osmChange version="0.6" generator="Waymark">\n  <create>\n';
-    xmlNodes.forEach(function (n) {
-      xml += '    <node id="' + n.id + '" lat="' + n.lat + '" lon="' + n.lon + '" version="1">\n';
-      Object.keys(n.tags).forEach(function (k) {
-        xml += '      <tag k="' + escapeXml(k) + '" v="' + escapeXml(n.tags[k]) + '"/>\n';
-      });
-      xml += '    </node>\n';
-    });
-    xmlWays.forEach(function (w) {
-      xml += '    <way id="' + w.id + '" version="1">\n';
-      w.nodes.forEach(function (ref) {
-        xml += '      <nd ref="' + ref + '"/>\n';
-      });
-      Object.keys(w.tags).forEach(function (k) {
-        xml += '      <tag k="' + escapeXml(k) + '" v="' + escapeXml(w.tags[k]) + '"/>\n';
-      });
-      xml += '    </way>\n';
-    });
-    xml += '  </create>\n</osmChange>';
-  } else if (type === 'gpx') {
-    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Waymark" xmlns="http://www.topografix.com/GPX/1/1">\n  <trk>\n    <name>Waymark Export</name>\n    <trkseg>\n';
-    var now = new Date().toISOString();
-    xmlNodes.forEach(function (n) {
-      xml += '      <trkpt lat="' + n.lat + '" lon="' + n.lon + '"><time>' + now + '</time></trkpt>\n';
-    });
-    xml += '    </trkseg>\n  </trk>\n</gpx>';
-  }
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<osm version="0.6" generator="Waymark">\n' +
+    '  <bounds minlat="' + minLat + '" minlon="' + minLng + '" maxlat="' + maxLat + '" maxlon="' + maxLng + '" />\n' +
+    nodesXml + '\n' +
+    wayXml + '\n' +
+    '</osm>';
+}
 
-  xmlGeneratorState.generatedXml = xml;
-  document.getElementById('xgPreview').textContent = xml;
-  document.getElementById('xgDownloadBtn').disabled = false;
+function previewXml() {
+  var xml = buildXml();
+  var output = document.getElementById('xgOutput');
+  var textarea = document.getElementById('xgXmlText');
+  if (!output || !textarea || !xml) return;
+  textarea.value = xml;
+  output.style.display = 'block';
 }
 
 function downloadXml() {
-  var type = document.getElementById('xgType').value;
-  var ext = type === 'gpx' ? 'gpx' : (type === 'osc' ? 'osc' : 'xml');
-  var mime = type === 'gpx' ? 'application/gpx+xml' : 'application/xml';
-  downloadFile(xmlGeneratorState.generatedXml, 'waymark-export.' + ext, mime);
+  var xml = buildXml();
+  if (!xml) return;
+  var nameEl = document.getElementById('xgName');
+  var fileName = (nameEl && nameEl.value.trim()) ? nameEl.value.trim() : 'waymark-export';
+  fileName = fileName.replace(/[^a-zA-Z0-9-_]/g, '_');
+  downloadFile(xml, fileName + '.osm', 'application/xml');
+  showNotification(getCurrentLang() === 'el' ? 'XML κατέβηκε!' : 'XML downloaded!', 'success');
 }
 
-function clearXmlGenerator() {
-  xmlNodes = [];
-  xmlWays = [];
-  xmlGeneratorState = { generatedXml: '', nodeCount: 0, wayCount: 0 };
-  document.getElementById('xgPreview').textContent = '';
-  document.getElementById('xgDownloadBtn').disabled = true;
-  updateXmlStats();
-}
+function clearXmlGen() {
+  var map = getXgMap();
+  if (map && xmlGenState.polyline) {
+    map.removeLayer(xmlGenState.polyline);
+  }
+  xmlGenState.points = [];
+  xmlGenState.polyline = null;
 
-function updateXmlStats() {
-  var isEl = getCurrentLang() === 'el';
-  var stats = document.getElementById('xgStats');
-  if (!stats) return;
-  stats.textContent = (isEl ? xmlNodes.length + ' nodes, ' + xmlWays.length + ' ways' : xmlNodes.length + ' nodes, ' + xmlWays.length + ' ways');
+  var nameEl = document.getElementById('xgName');
+  var subEl = document.getElementById('xgSubtype');
+  var output = document.getElementById('xgOutput');
+  if (nameEl) nameEl.value = '';
+  if (subEl) subEl.value = '';
+  if (output) output.style.display = 'none';
+
+  updateXgInfo();
 }
 
 function _xmlGeneratorCleanup() {
   delete window.onMapClick_xmlGenerator;
-  xmlNodes = [];
-  xmlWays = [];
-  xmlGeneratorState = { generatedXml: '', nodeCount: 0, wayCount: 0 };
+  var map = getXgMap();
+  if (map && xmlGenState.polyline) {
+    map.removeLayer(xmlGenState.polyline);
+  }
+  xmlGenState = { points: [], polyline: null };
 }
 
 window._xmlGeneratorCleanup = _xmlGeneratorCleanup;

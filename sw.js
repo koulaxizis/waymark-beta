@@ -1,19 +1,32 @@
 /* =========================================================
    WAYMARK — Service Worker
    Caches static assets for offline use.
-   Updated version with lazy module caching.
+   Updated: fixed module paths.
    ========================================================= */
 
-const CACHE_NAME = 'waymark-beta-v2-1-0';
+const CACHE_NAME = 'waymark-beta-v2-1-1';
 const STATIC_ASSETS = [
   './',
   './app.html',
   './config.js',
   './styles.css',
   './i18n.js',
-  './theme.js',
   './app.js',
-  './utils.js',
+  './modules/utils.js',
+  './modules/nominatim.js',
+  './modules/poi-viewer.js',
+  './modules/gpx-editor.js',
+  './modules/xml-generator.js',
+  './modules/osm-editor.js',
+  './modules/quality-checker.js',
+  './modules/heatmap.js',
+  './modules/tags-lookup.js',
+  './modules/notes-browser.js',
+  './modules/track-recorder.js',
+  './modules/building-editor.js',
+  './modules/road-editor.js',
+  './modules/address-mapper.js',
+  './modules/quest-mode.js',
   './manifest.json',
   './favicon.svg',
   './callback.html',
@@ -23,10 +36,6 @@ const STATIC_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
 ];
 
-// =======================================================
-// Install — Pre-cache core static assets
-// =======================================================
-
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -35,10 +44,6 @@ self.addEventListener('install', (event) => {
       .catch(err => console.error('SW install error:', err))
   );
 });
-
-// =======================================================
-// Activate — Clean old caches
-// =======================================================
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
@@ -55,14 +60,9 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// =======================================================
-// Fetch — Cache-first for static, network-first for APIs
-// =======================================================
-
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Skip non-GET requests
   if (event.request.method !== 'GET') return;
 
   // Skip OSM API & proxy requests (always network)
@@ -71,22 +71,25 @@ self.addEventListener('fetch', (event) => {
       url.hostname.includes('kumi.systems') ||
       url.hostname.includes('nominatim') ||
       url.hostname.includes('workers.dev') ||
+      url.hostname.includes('taginfo') ||
       url.hostname.includes('osm.org')) {
-    // Network-first for APIs
     event.respondWith(networkFirst(event.request));
     return;
   }
 
-  // Skip external tile servers (let them be handled by browser cache)
+  // Skip external tile servers
   if (url.hostname.includes('tile.') ||
       url.hostname.includes('server.') ||
-      url.hostname.includes('basemaps.')) {
+      url.hostname.includes('basemaps.') ||
+      url.hostname.includes('arcgisonline') ||
+      url.hostname.includes('opentopomap') ||
+      url.hostname.includes('cyclosm') ||
+      url.hostname.includes('thunderforest')) {
     return;
   }
 
   // Cache-first for local static assets
-  if (STATIC_ASSETS.includes(event.request.url) ||
-      url.pathname.endsWith('.js') ||
+  if (url.pathname.endsWith('.js') ||
       url.pathname.endsWith('.css') ||
       url.pathname.endsWith('.svg') ||
       url.pathname.endsWith('.json') ||
@@ -96,13 +99,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Default: cache-first with network fallback
   event.respondWith(cacheFirst(event.request));
 });
-
-// =======================================================
-// Cache-first strategy
-// =======================================================
 
 function cacheFirst(request) {
   return caches.match(request)
@@ -118,10 +116,6 @@ function cacheFirst(request) {
       }).catch(() => null);
     });
 }
-
-// =======================================================
-// Network-first strategy (for APIs)
-// =======================================================
 
 function networkFirst(request) {
   return fetch(request)

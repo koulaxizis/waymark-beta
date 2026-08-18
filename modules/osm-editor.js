@@ -1,7 +1,9 @@
 /* =========================================================
    WAYMARK — OSM Editor Module
    OAuth 2.0 PKCE via same-window redirect.
-   Token stored in localStorage (shared across tabs).
+   Token stored in localStorage (shared across all modules).
+   Includes: Global login integration, coordinate display,
+   POI name field, tag presets, taginfo search.
    ========================================================= */
 
 var osmEditorState = {
@@ -27,33 +29,153 @@ var OSM_TAG_PRESETS = {
   sport: ['soccer', 'tennis', 'basketball', 'volleyball', 'swimming', 'cycling']
 };
 
+function getOsmeMap() { return window.appState ? window.appState.map : null; }
+
 function initOsmEditor(map, container, appState) {
   renderEditorUI(container);
   refreshLoginStatus();
 
+  // Listen for login changes from other tabs/windows
   window.addEventListener('storage', function (e) {
-    if (e.key === 'osm_access_token' || e.key === 'osm_user_id') {
+    if (e.key === 'osm_access_token' || e.key === 'osm_user_id' || e.key === 'osm_user_name') {
       refreshLoginStatus();
+      if (window.updateGlobalLoginBtn) window.updateGlobalLoginBtn();
     }
   });
 
   function handleMapClick(lat, lng) {
-    if (!isLoggedIn()) {
-      showNotification(getCurrentLang() === 'el' ? 'Σύνδεσου πρώτα!' : 'Please login first!', 'warning');
+    if (!window.isLoggedIn || !window.isLoggedIn()) {
+      showNotification(
+        getCurrentLang() === 'el' ? 'Σύνδεσου πρώτα!' : 'Login first!',
+        'warning'
+      );
       return;
     }
     osmEditorState.pendingLat = lat;
     osmEditorState.pendingLon = lng;
-    showNotification(getCurrentLang() === 'el'
-      ? 'Θέση ορίστηke. Συμπλήρωσε τα πεδία και πάτα "Δημιουργία".'
-      : 'Position set. Fill in the fields and press "Create".', 'info');
+
+    // Update coordinate display
+    var coordEl = document.getElementById('editorCoords');
+    if (coordEl) {
+      coordEl.textContent = '📍 ' + lat.toFixed(6) + ', ' + lng.toFixed(6);
+      coordEl.style.display = 'block';
+    }
+
+    showNotification(
+      getCurrentLang() === 'el'
+        ? 'Θέση ορίστηκε. Συμπλήρωσε τα πεδία και πάτα "Δημιουργία".'
+        : 'Position set. Fill in the fields and press "Create".',
+      'info'
+    );
   }
 
   window.onMapClick_osmEditor = handleMapClick;
 }
 
-function isLoggedIn() {
-  return !!localStorage.getItem('osm_access_token');
+function renderEditorUI(container) {
+  var isEl = getCurrentLang() === 'el';
+
+  var typeOptions = Object.keys(OSM_TAG_PRESETS).map(function (t) {
+    return '<option value="' + t + '">' +
+      t.charAt(0).toUpperCase() + t.slice(1) +
+      '</option>';
+  }).join('');
+
+  container.innerHTML =
+    '<div class="osm-editor-ui">' +
+
+    // Login section
+    '  <div id="editorLoginBadge" class="login-badge">' +
+    (isEl ? '❌ Όχι συνδεδεμένος' : '❌ Not logged in') + '</div>' +
+    '  <button id="osmLoginBtn" class="btn btn-success">🔑 ' +
+    (isEl ? 'Σύνδεση με OSM' : 'Login with OSM') + '</button>' +
+    '  <button id="osmLogoutBtn" class="btn btn-danger" style="display:none;">🔓 ' +
+    (isEl ? 'Αποσύνδεση' : 'Logout') + '</button>' +
+
+    '  <hr>' +
+
+    // Coordinate display
+    '  <div id="editorCoords" class="note-description" style="display:none;' +
+    '    text-align:center;color:var(--accent);font-weight:600;"></div>' +
+
+    // Create new point section
+    '  <h3>' + (isEl ? 'Δημιουργία Νέου Σημείου' : 'Create New Point') + '</h3>' +
+
+    '  <div class="form-group"><label>' + (isEl ? 'Όνομα POI:' : 'POI Name:') + '</label>' +
+    '    <input type="text" id="newPoiName" class="form-control" placeholder="' +
+    (isEl ? 'π.χ. Εθνικός Κήπος' : 'e.g. National Garden') + '">' +
+    '  </div>' +
+
+    '  <div class="form-group"><label>' + (isEl ? 'Τύπος:' : 'Type:') + '</label>' +
+    '    <select id="newPoiType" class="form-control">' + typeOptions + '</select>' +
+    '  </div>' +
+
+    '  <div class="form-group"><label>' + (isEl ? 'Κύριο Tag:' : 'Main Tag:') + '</label>' +
+    '    <input type="text" id="newPoiTag" list="presetOptions" class="form-control"' +
+    '    placeholder="' + (isEl ? 'π.χ. bench, cafe...' : 'e.g. bench, cafe...') + '">' +
+    '    <datalist id="presetOptions"></datalist>' +
+    '  </div>' +
+
+    '  <div class="form-group"><label>' + (isEl ? 'Πρόσθετα Tags:' : 'Additional Tags:') + '</label>' +
+    '    <textarea id="additionalTags" rows="3" class="form-control"' +
+    '    placeholder="key=value, ' + (isEl ? 'ένα ανά γραμμή' : 'one per line') + '"></textarea>' +
+    '  </div>' +
+
+    '  <div class="form-group"><label>' + (isEl ? 'Σχόλιο Changeset:' : 'Changeset Comment:') + '</label>' +
+    '    <input type="text" id="changesetComment" class="form-control"' +
+    '    placeholder="' + (isEl ? 'π.χ. add bench' : 'e.g. add bench') + '"></input>' +
+    '  </div>' +
+
+    '  <button id="createNewPointBtn" class="btn btn-success">📍 ' +
+    (isEl ? 'Δημιουργία στο χάρτη' : 'Create on Map') + '</button>' +
+
+    '  <hr>' +
+
+    // Edit existing section (hidden by default)
+    '  <div id="editExistingSection" style="display:none;">' +
+    '    <h3>' + (isEl ? 'Επεξεργασία Σημείου' : 'Edit Point') + '</h3>' +
+    '    <div id="editInfo" class="note-description"></div>' +
+    '    <div class="form-group"><label>' +
+    (isEl ? 'Tags (key=value ανά γραμμή):' : 'Tags (key=value per line):') + '</label>' +
+    '      <textarea id="editTags" rows="4" class="form-control"></textarea>' +
+    '    </div>' +
+    '    <button id="saveEditsBtn" class="btn btn-success">💾 ' +
+    (isEl ? 'Αποθήκευση' : 'Save') + '</button>' +
+    '    <button id="cancelEditBtn" class="btn btn-secondary">✖️ ' +
+    (isEl ? 'Άκυρο' : 'Cancel') + '</button>' +
+    '  </div>' +
+
+    '  <hr>' +
+
+    // Tag database search
+    '  <h3>Tags Database</h3>' +
+    '  <input type="text" id="tagSearch" class="form-control" placeholder="' +
+    (isEl ? 'Αναζήτηση tag...' : 'Search tag...') +
+    '" style="margin-bottom:0.5rem;">' +
+    '  <div id="tagResults" class="results-list"></div>' +
+
+    '</div>';
+
+  updatePresetOptions();
+
+  // Event listeners
+  var loginBtn = document.getElementById('osmLoginBtn');
+  var logoutBtn = document.getElementById('osmLogoutBtn');
+  var typeSel = document.getElementById('newPoiType');
+  var createBtn = document.getElementById('createNewPointBtn');
+  var saveBtn = document.getElementById('saveEditsBtn');
+  var cancelBtn = document.getElementById('cancelEditBtn');
+  var tagSearch = document.getElementById('tagSearch');
+
+  if (loginBtn) loginBtn.addEventListener('click', function () {
+    if (typeof initiateOAuth === 'function') initiateOAuth();
+  });
+  if (logoutBtn) logoutBtn.addEventListener('click', logoutFromOSM);
+  if (typeSel) typeSel.addEventListener('change', updatePresetOptions);
+  if (createBtn) createBtn.addEventListener('click', createNewPoint);
+  if (saveBtn) saveBtn.addEventListener('click', saveEdits);
+  if (cancelBtn) cancelBtn.addEventListener('click', cancelEdit);
+  if (tagSearch) tagSearch.addEventListener('input', searchTagsDb);
 }
 
 function refreshLoginStatus() {
@@ -61,11 +183,12 @@ function refreshLoginStatus() {
   if (!badge) return;
   var isEl = getCurrentLang() === 'el';
 
-  if (isLoggedIn()) {
+  if (window.isLoggedIn && window.isLoggedIn()) {
     badge.classList.add('active');
-    badge.textContent = isEl ? '✅ Συνδεδεμένος' : '✅ Logged in';
-    var userId = localStorage.getItem('osm_user_id');
-    if (userId) badge.title = 'User ID: ' + userId;
+    var name = localStorage.getItem('osm_user_name') || '';
+    badge.textContent = isEl
+      ? '✅ Συνδεδεμένος' + (name ? ' (' + name + ')' : '')
+      : '✅ Logged in' + (name ? ' (' + name + ')' : '');
 
     var loginBtn = document.getElementById('osmLoginBtn');
     var logoutBtn = document.getElementById('osmLogoutBtn');
@@ -82,83 +205,33 @@ function refreshLoginStatus() {
   }
 }
 
-function renderEditorUI(container) {
-  var isEl = getCurrentLang() === 'el';
-
-  container.innerHTML =
-    '<div class="osm-editor-ui">' +
-    '  <div id="editorLoginBadge" class="login-badge">' + (isEl ? '❌ Όχι συνδεδεμένος' : '❌ Not logged in') + '</div>' +
-    '  <button id="osmLoginBtn" class="btn btn-success">🔑 ' + (isEl ? 'Σύνδεση με OSM' : 'Login with OSM') + '</button>' +
-    '  <button id="osmLogoutBtn" class="btn btn-danger" style="display:none;">🔓 ' + (isEl ? 'Αποσύνδεση' : 'Logout') + '</button>' +
-    '  <hr>' +
-    '  <h3>' + (isEl ? 'Δημιουργία Νέου Σημείου' : 'Create New Point') + '</h3>' +
-    '  <div class="form-group"><label>' + (isEl ? 'Τύπος:' : 'Type:') + '</label>' +
-    '    <select id="newPoiType" class="form-control">' +
-    '      <option value="amenity">Amenity</option>' +
-    '      <option value="shop">Shop</option>' +
-    '      <option value="leisure">Leisure</option>' +
-    '      <option value="sport">Sport</option>' +
-    '      <option value="building">Building</option>' +
-    '      <option value="highway">Highway</option>' +
-    '    </select>' +
-    '  </div>' +
-    '  <div class="form-group"><label>' + (isEl ? 'Κύριο Tag:' : 'Main Tag:') + '</label>' +
-    '    <input type="text" id="newPoiTag" list="presetOptions" class="form-control" placeholder="' + (isEl ? 'π.χ. bench, cafe...' : 'e.g. bench, cafe...') + '">' +
-    '    <datalist id="presetOptions"></datalist>' +
-    '  </div>' +
-    '  <div class="form-group"><label>' + (isEl ? 'Πρόσθετα Tags:' : 'Additional Tags:') + '</label>' +
-    '    <textarea id="additionalTags" rows="3" class="form-control" placeholder="key=value, ' + (isEl ? 'ένα ανά γραμμή' : 'one per line') + '"></textarea>' +
-    '  </div>' +
-    '  <div class="form-group"><label>' + (isEl ? 'Σχόλιο Changeset:' : 'Changeset Comment:') + '</label>' +
-    '    <input type="text" id="changesetComment" class="form-control" placeholder="' + (isEl ? 'π.χ. add bench' : 'e.g. add bench') + '">' +
-    '  </div>' +
-    '  <button id="createNewPointBtn" class="btn btn-success">📍 ' + (isEl ? 'Δημιουργία στο χάρτη' : 'Create on Map') + '</button>' +
-    '  <hr>' +
-    '  <div id="editExistingSection" style="display:none;">' +
-    '    <h3>' + (isEl ? 'Επεξεργασία Σημείου' : 'Edit Point') + '</h3>' +
-    '    <div id="editInfo" class="note-description"></div>' +
-    '    <div class="form-group"><label>' + (isEl ? 'Tags (key=value ανά γραμμή):' : 'Tags (key=value per line):') + '</label>' +
-    '      <textarea id="editTags" rows="4" class="form-control"></textarea>' +
-    '    </div>' +
-    '    <button id="saveEditsBtn" class="btn btn-success">💾 ' + (isEl ? 'Αποθήκευση' : 'Save') + '</button>' +
-    '    <button id="cancelEditBtn" class="btn btn-secondary">✖️ ' + (isEl ? 'Άκυρο' : 'Cancel') + '</button>' +
-    '  </div>' +
-    '  <hr>' +
-    '  <h3>Tags Database</h3>' +
-    '  <input type="text" id="tagSearch" class="form-control" placeholder="' + (isEl ? 'Αναζήτηση tag...' : 'Search tag...') + '" style="margin-bottom:0.5rem;">' +
-    '  <div id="tagResults" class="results-list"></div>' +
-    '</div>';
-
-  updatePresetOptions();
-
-  document.getElementById('osmLoginBtn').addEventListener('click', initiateOAuth);
-  document.getElementById('osmLogoutBtn').addEventListener('click', logoutFromOSM);
-  document.getElementById('newPoiType').addEventListener('change', updatePresetOptions);
-  document.getElementById('createNewPointBtn').addEventListener('click', createNewPoint);
-  document.getElementById('saveEditsBtn').addEventListener('click', saveEdits);
-  document.getElementById('cancelEditBtn').addEventListener('click', cancelEdit);
-  document.getElementById('tagSearch').addEventListener('input', searchTagsDb);
-}
-
 function updatePresetOptions() {
-  var type = document.getElementById('newPoiType').value;
+  var typeEl = document.getElementById('newPoiType');
+  if (!typeEl) return;
+  var type = typeEl.value;
   var datalist = document.getElementById('presetOptions');
-  var options = OSM_TAG_PRESETS[type] || [];
+  if (!datalist) return;
 
+  var options = OSM_TAG_PRESETS[type] || [];
   datalist.innerHTML = '';
   options.forEach(function (opt) {
-    var li = document.createElement('option');
-    li.value = opt;
-    datalist.appendChild(li);
+    var option = document.createElement('option');
+    option.value = opt;
+    datalist.appendChild(option);
   });
 }
+
+// ── OAuth Functions ──
 
 function initiateOAuth() {
   var cfg = window.WAYMARK_CONFIG || {};
   var isEl = getCurrentLang() === 'el';
 
   if (!cfg.OSM_CLIENT_ID || !cfg.REDIRECT_URI) {
-    alert(isEl ? 'Config: OSM_CLIENT_ID ή REDIRECT_URI δεν ρυθμίστηκαν' : 'Config: OSM_CLIENT_ID or REDIRECT_URI not set');
+    alert(isEl
+      ? 'Config: OSM_CLIENT_ID ή REDIRECT_URI δεν ρυθμίστηκαν'
+      : 'Config: OSM_CLIENT_ID or REDIRECT_URI not set'
+    );
     return;
   }
 
@@ -182,7 +255,7 @@ function initiateOAuth() {
 }
 
 function generateRandomString(length) {
-  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
   var str = '';
   for (var i = 0; i < length; i++) {
     str += chars[Math.floor(Math.random() * chars.length)];
@@ -193,8 +266,8 @@ function generateRandomString(length) {
 function generateHash(str) {
   var encoder = new TextEncoder();
   var data = encoder.encode(str);
-  return crypto.subtle.digest('SHA-256', data).then(function (h) {
-    return btoa(String.fromCharCode.apply(null, new Uint8Array(h)))
+  return crypto.subtle.digest('SHA-256', data).then(function (hash) {
+    return btoa(String.fromCharCode.apply(null, new Uint8Array(hash)))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
   });
 }
@@ -202,23 +275,51 @@ function generateHash(str) {
 function logoutFromOSM() {
   localStorage.removeItem('osm_access_token');
   localStorage.removeItem('osm_user_id');
+  localStorage.removeItem('osm_user_name');
   localStorage.removeItem('pkce_verifier');
   refreshLoginStatus();
-  hideEditSection();
+  if (window.updateGlobalLoginBtn) window.updateGlobalLoginBtn();
+  showNotification(
+    getCurrentLang() === 'el' ? 'Αποσυνδέθηκες' : 'Logged out',
+    'info'
+  );
 }
+
+// ── Create New Point ──
 
 function createNewPoint() {
   var isEl = getCurrentLang() === 'el';
-  var type = document.getElementById('newPoiType').value;
-  var tagValue = document.getElementById('newPoiTag').value.trim();
-  var additionalTags = document.getElementById('additionalTags').value.trim();
-  var comment = document.getElementById('changesetComment').value.trim();
 
-  if (!tagValue) { alert(isEl ? 'Διάλεξε κύριο tag' : 'Select a main tag'); return; }
-  if (!comment) { alert(isEl ? 'Ορίστε changeset comment' : 'Set changeset comment'); return; }
+  if (!window.isLoggedIn || !window.isLoggedIn()) {
+    alert(isEl ? 'Σύνδεσου πρώτα!' : 'Login first!');
+    return;
+  }
 
+  var nameEl = document.getElementById('newPoiName');
+  var typeEl = document.getElementById('newPoiType');
+  var tagEl = document.getElementById('newPoiTag');
+  var addlEl = document.getElementById('additionalTags');
+  var commentEl = document.getElementById('changesetComment');
+
+  var name = nameEl ? nameEl.value.trim() : '';
+  var type = typeEl ? typeEl.value : 'amenity';
+  var tagValue = tagEl ? tagEl.value.trim() : '';
+  var additionalTags = addlEl ? addlEl.value.trim() : '';
+  var comment = commentEl ? commentEl.value.trim() : '';
+
+  if (!tagValue) {
+    alert(isEl ? 'Διάλεξε κύριο tag' : 'Select a main tag');
+    return;
+  }
+  if (!comment) {
+    alert(isEl ? 'Ορίστε changeset comment' : 'Set changeset comment');
+    return;
+  }
+
+  // Build tags object
   var tags = {};
   tags[type] = tagValue;
+  if (name) tags['name'] = name;
   if (additionalTags) {
     additionalTags.split('\n').forEach(function (line) {
       var parts = line.split('=').map(function (s) { return s.trim(); });
@@ -226,12 +327,15 @@ function createNewPoint() {
     });
   }
 
+  // Get coordinates
   var lat = osmEditorState.pendingLat;
   var lon = osmEditorState.pendingLon;
 
   if (lat === null || lon === null) {
-    var center = window.appState && window.appState.map ? window.appState.map.getCenter() : null;
-    if (center) {
+    // Fall back to map center
+    var map = getOsmeMap();
+    if (map) {
+      var center = map.getCenter();
       lat = center.lat;
       lon = center.lng;
       osmEditorState.pendingLat = lat;
@@ -242,15 +346,40 @@ function createNewPoint() {
     }
   }
 
-  var oscXml = buildOscNodeUpload(lat, lon, tags, comment);
   var token = localStorage.getItem('osm_access_token');
+  if (!token) {
+    alert(isEl ? 'Δεν υπάρχει token. Σύνδεσου ξανά.' : 'No token. Login again.');
+    return;
+  }
 
-  uploadOSC(token, oscXml).then(function (result) {
+  var oscXml = buildOscNodeUpload(lat, lon, tags);
+
+  showNotification(isEl ? 'Ενημέρωση OSM...' : 'Uploading to OSM...', 'info');
+
+  uploadOSC(token, oscXml, comment).then(function (result) {
     if (result.success) {
-      alert(isEl ? '✅ Επιτυχία! ID: ' + result.newId : '✅ Success! ID: ' + result.newId);
+      showNotification(
+        isEl ? '✅ Επιτυχία! ID: ' + result.newId : '✅ Success! ID: ' + result.newId,
+        'success'
+      );
+
+      // Reset form
+      if (nameEl) nameEl.value = '';
+      if (tagEl) tagEl.value = '';
+      if (addlEl) addlEl.value = '';
+      var coordEl = document.getElementById('editorCoords');
+      if (coordEl) coordEl.style.display = 'none';
       osmEditorState.pendingLat = null;
       osmEditorState.pendingLon = null;
-      if (window.appState && window.appState.map) window.appState.map.invalidateSize();
+
+      var map = getOsmeMap();
+      if (map) {
+        map.invalidateSize();
+        // Add visual marker for created POI
+        L.circleMarker([lat, lon], {
+          radius: 8, fillColor: '#22c55e', color: 'white', weight: 2, fillOpacity: 0.8,
+        }).addTo(map).bindPopup('<strong>New POI</strong><br/>ID: ' + result.newId).openPopup();
+      }
     } else {
       alert((isEl ? 'Απέτυχε: ' : 'Failed: ') + result.error);
     }
@@ -259,7 +388,7 @@ function createNewPoint() {
   });
 }
 
-function buildOscNodeUpload(lat, lon, tags, comment) {
+function buildOscNodeUpload(lat, lon, tags) {
   var tagEntries = Object.keys(tags).map(function (k) {
     return '        <tag k="' + escapeXml(k) + '" v="' + escapeXml(tags[k]) + '"/>';
   }).join('\n');
@@ -274,51 +403,100 @@ function buildOscNodeUpload(lat, lon, tags, comment) {
     '</osmChange>';
 }
 
-function uploadOSC(accessToken, oscContent) {
+// ── Upload OSC to OSM API ──
+
+function uploadOSC(accessToken, oscContent, changesetComment) {
   var cfg = window.WAYMARK_CONFIG || {};
   var proxyUrl = cfg.PROXY_URL;
 
   if (!proxyUrl) {
-    return Promise.resolve({ success: false, error: 'Proxy URL not configured' });
+    return Promise.reject(new Error('PROXY_URL not configured'));
   }
+
+  var isEl = getCurrentLang() === 'el';
+
+  // Step 1: Open changeset
+  var changesetXml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<osm version="0.6" generator="Waymark">\n' +
+    '<changeset>\n' +
+    '  <tag k="created_by" v="Waymark"/>\n' +
+    '  <tag k="comment" v="' + escapeXml(changesetComment || 'Waymark edit') + '"/>\n' +
+    '</changeset>\n' +
+    '</osm>';
 
   return fetch(proxyUrl + '/api/0.6/changeset/open', {
     method: 'PUT',
-    headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/xml' },
-    body: '<?xml version="1.0" encoding="UTF-8"?>\n<osm version="0.6" generator="Waymark"><changeset><tag k="created_by" v="Waymark"/></changeset></osm>'
-  }).then(function (openResp) {
-    if (!openResp.ok) return openResp.text().then(function (t) { throw new Error('Open: ' + t); });
-    return openResp.text();
-  }).then(function (changesetId) {
-    changesetId = changesetId.trim();
-    return fetch(proxyUrl + '/api/0.6/changeset/' + changesetId + '/upload', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/xml' },
-      body: oscContent
-    }).then(function (uploadResp) {
-      if (!uploadResp.ok) return uploadResp.text().then(function (t) { throw new Error('Upload: ' + t); });
-      return uploadResp.text();
-    }).then(function (diff) {
-      var idMatch = diff.match(/id="(\d+)"/);
-      var newId = idMatch ? idMatch[1] : null;
-      return fetch(proxyUrl + '/api/0.6/changeset/' + changesetId + '/close', {
-        method: 'PUT',
-        headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'text/plain' }
-      }).then(function () {
-        return { success: true, newId: newId };
-      });
+    headers: {
+      'Authorization': 'Bearer ' + accessToken,
+      'Content-Type': 'application/xml',
+    },
+    body: changesetXml,
+  })
+    .then(function (resp) {
+      if (!resp.ok) {
+        return resp.text().then(function (t) {
+          throw new Error(isEl ? 'Άνοιγμα changeset: ' + t : 'Open changeset: ' + t);
+        });
+      }
+      return resp.text();
+    })
+    .then(function (changesetId) {
+      changesetId = changesetId.trim();
+
+      // Step 2: Upload OSC
+      return fetch(proxyUrl + '/api/0.6/changeset/' + changesetId + '/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + accessToken,
+          'Content-Type': 'application/xml',
+        },
+        body: oscContent,
+      })
+        .then(function (uploadResp) {
+          if (!uploadResp.ok) {
+            return uploadResp.text().then(function (t) {
+              throw new Error(isEl ? 'Upload: ' + t : 'Upload: ' + t);
+            });
+          }
+          return uploadResp.text();
+        })
+        .then(function (diffResult) {
+          // Extract new ID from diff result
+          var idMatch = diffResult.match(/id="(\d+)"/);
+          var newId = idMatch ? idMatch[1] : null;
+
+          // Step 3: Close changeset
+          return fetch(proxyUrl + '/api/0.6/changeset/' + changesetId + '/close', {
+            method: 'PUT',
+            headers: {
+              'Authorization': 'Bearer ' + accessToken,
+              'Content-Type': 'text/plain',
+            },
+          }).then(function () {
+            return { success: true, newId: newId };
+          });
+        });
+    })
+    .catch(function (err) {
+      return { success: false, error: err.message };
     });
-  }).catch(function (err) {
-    return { success: false, error: err.message };
-  });
 }
+
+// ── Save Edits (modify existing) ──
 
 function saveEdits() {
   var isEl = getCurrentLang() === 'el';
-  if (!osmEditorState.editingPoi) return;
 
-  var tagsText = document.getElementById('editTags').value.trim();
+  if (!osmEditorState.editingPoi) return;
+  if (!window.isLoggedIn || !window.isLoggedIn()) {
+    alert(isEl ? 'Σύνδεσου πρώτα!' : 'Login first!');
+    return;
+  }
+
+  var tagsTextEl = document.getElementById('editTags');
+  var tagsText = tagsTextEl ? tagsTextEl.value.trim() : '';
   var tags = {};
+
   tagsText.split('\n').forEach(function (line) {
     var parts = line.split('=').map(function (s) { return s.trim(); });
     if (parts[0] && parts[1]) tags[parts[0]] = parts[1];
@@ -326,7 +504,10 @@ function saveEdits() {
 
   var el = osmEditorState.editingPoi;
   var elType = el.type || 'node';
-  var latLonAttrs = elType === 'node' ? 'lat="' + (el.lat || '') + '" lon="' + (el.lon || '') + '"' : '';
+  var latLonAttrs = '';
+  if (elType === 'node') {
+    latLonAttrs = 'lat="' + (el.lat || '') + '" lon="' + (el.lon || '') + '"';
+  }
 
   var tagLines = Object.keys(tags).map(function (k) {
     return '      <tag k="' + escapeXml(k) + '" v="' + escapeXml(tags[k]) + '"/>';
@@ -342,9 +523,14 @@ function saveEdits() {
     '</osmChange>';
 
   var token = localStorage.getItem('osm_access_token');
-  uploadOSC(token, oscXml).then(function (result) {
+  var commentEl = document.getElementById('changesetComment');
+  var comment = commentEl ? commentEl.value.trim() : 'Waymark edit';
+
+  showNotification(isEl ? 'Αποθήκευση...' : 'Saving...', 'info');
+
+  uploadOSC(token, oscXml, comment).then(function (result) {
     if (result.success) {
-      alert(isEl ? '✅ Αποθηκεύτηκε!' : '✅ Saved!');
+      showNotification(isEl ? '✅ Αποθηκεύτηκε!' : '✅ Saved!', 'success');
       cancelEdit();
     } else {
       alert((isEl ? 'Αποτυχία: ' : 'Failed: ') + result.error);
@@ -353,26 +539,29 @@ function saveEdits() {
 }
 
 function cancelEdit() {
-  hideEditSection();
+  var section = document.getElementById('editExistingSection');
+  if (section) section.style.display = 'none';
   osmEditorState.editingPoi = null;
 }
 
-function hideEditSection() {
-  var sec = document.getElementById('editExistingSection');
-  if (sec) sec.style.display = 'none';
-}
+// ── Tags Database Search ──
 
 function searchTagsDb() {
-  var query = document.getElementById('tagSearch').value.trim().toLowerCase();
+  var queryEl = document.getElementById('tagSearch');
+  var query = queryEl ? queryEl.value.trim().toLowerCase() : '';
   var resultsEl = document.getElementById('tagResults');
   var isEl = getCurrentLang() === 'el';
 
-  if (!query) {
-    resultsEl.innerHTML = '';
+  if (!query || !resultsEl) {
+    if (resultsEl) resultsEl.innerHTML = '';
     return;
   }
 
-  fetch('https://taginfo.openstreetmap.org/api/4/tags/popular?key=' + encodeURIComponent(query) + '&page=1&rp=15&sortname=count_all&sortorder=desc')
+  fetch(
+    'https://taginfo.openstreetmap.org/api/4/tags/popular?key=' +
+    encodeURIComponent(query) +
+    '&page=1&rp=15&sortname=count_all&sortorder=desc'
+  )
     .then(function (r) { return r.json(); })
     .then(function (data) {
       resultsEl.innerHTML = '';
@@ -383,7 +572,9 @@ function searchTagsDb() {
       data.data.forEach(function (item) {
         var div = document.createElement('div');
         div.className = 'result-item';
-        div.innerHTML = '<strong>' + escapeHtml(item.key) + '=' + escapeHtml(item.value) + '</strong><small>' + item.count_all + ' uses</small>';
+        div.innerHTML =
+          '<strong>' + escapeHtml(item.key) + '=' + escapeHtml(item.value) + '</strong>' +
+          '<small>' + item.count_all + ' uses</small>';
         div.addEventListener('click', function () {
           navigator.clipboard.writeText(item.key + '=' + item.value);
           showNotification(isEl ? 'Αντιγράφηκε!' : 'Copied!', 'success');
@@ -396,11 +587,28 @@ function searchTagsDb() {
     });
 }
 
+// ── Cleanup ──
+
 function _osmEditorCleanup() {
   delete window.onMapClick_osmEditor;
-  osmEditorState = { editingPoi: null, editingMarkers: [], pendingLat: null, pendingLon: null };
+  var map = getOsmeMap();
+  if (map && osmEditorState.editingMarkers.length > 0) {
+    osmEditorState.editingMarkers.forEach(function (m) {
+      if (m) map.removeLayer(m);
+    });
+  }
+  osmEditorState = {
+    editingPoi: null,
+    editingMarkers: [],
+    pendingLat: null,
+    pendingLon: null,
+  };
 }
+
+// ── Global Exports ──
 
 window._osmEditorCleanup = _osmEditorCleanup;
 window.initiateOAuth = initiateOAuth;
 window.uploadOSC = uploadOSC;
+window.logoutFromOSM = logoutFromOSM;
+window.refreshLoginStatus = refreshLoginStatus;

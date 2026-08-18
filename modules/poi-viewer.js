@@ -5,7 +5,7 @@
 
 var poiViewerState = {
   mapMarkers: [],
-  isLoading: false
+  isLoading: false,
 };
 
 function getPoiMap() { return window.appState ? window.appState.map : null; }
@@ -14,8 +14,8 @@ function initPoiViewer(map, container, appState) {
   renderPoiUI(container);
 
   var m = getPoiMap();
-  var timer = null;
   if (m) {
+    var timer = null;
     m.on('moveend', function () {
       clearTimeout(timer);
       timer = setTimeout(function () { fetchPoisInViewport(); }, 600);
@@ -27,6 +27,7 @@ function initPoiViewer(map, container, appState) {
 
 function renderPoiUI(container) {
   var isEl = getCurrentLang() === 'el';
+
   container.innerHTML =
     '<div class="poi-viewer-ui">' +
     '  <div class="form-group"><label>' + (isEl ? 'Τύπος POI:' : 'POI Type:') + '</label>' +
@@ -38,13 +39,15 @@ function renderPoiUI(container) {
     '      <option value="historic">' + (isEl ? 'Ιστορικά' : 'Historic') + '</option>' +
     '    </select>' +
     '  </div>' +
-    '  <button id="fetchPoisBtn" class="btn btn-primary">🔍 ' + (isEl ? 'Φόρτωση' : 'Fetch POIs') + '</button>' +
+    '  <button id="fetchPoisBtn" class="btn btn-primary">🔍 ' +
+    (isEl ? 'Φόρτωση' : 'Fetch POIs') + '</button>' +
     '  <div id="poiStats" class="note-description" style="margin-top:0.5rem;"></div>' +
     '  <div id="poiList" class="results-list"></div>' +
     '</div>';
 
   var btn = document.getElementById('fetchPoisBtn');
   var sel = document.getElementById('poiType');
+
   if (btn) btn.addEventListener('click', fetchPoisInViewport);
   if (sel) sel.addEventListener('change', fetchPoisInViewport);
 }
@@ -64,7 +67,8 @@ async function fetchPoisInViewport() {
 
   try {
     var bounds = map.getBounds();
-    var bbox = bounds.getSouth() + ',' + bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast();
+    var bbox = bounds.getSouth() + ',' + bounds.getWest() + ',' +
+               bounds.getNorth() + ',' + bounds.getEast();
 
     var query = '[out:json][timeout:25];(' +
       'node["' + poiType + '"](' + bbox + ');' +
@@ -97,7 +101,11 @@ async function fetchPoisInViewport() {
       var name = el.tags ? (el.tags.name || el.tags[poiType] || 'POI') : 'POI';
 
       var marker = L.circleMarker([lat, lon], {
-        radius: 6, fillColor: '#6d4aff', color: '#6d4aff', weight: 1, fillOpacity: 0.7
+        radius: 6,
+        fillColor: '#6d4aff',
+        color: '#6d4aff',
+        weight: 1,
+        fillOpacity: 0.7,
       }).addTo(map);
 
       marker.bindPopup(buildPoiPopup(el, poiType));
@@ -107,13 +115,22 @@ async function fetchPoisInViewport() {
       item.className = 'result-item';
       item.innerHTML =
         '<strong>' + escapeHtml(name) + '</strong>' +
-        '<small>' + poiType + (el.tags && el.tags[poiType] ? ': ' + escapeHtml(el.tags[poiType]) : '') + '</small>';
-      item.addEventListener('click', function () { map.setView([lat, lon], 17); marker.openPopup(); });
+        '<small>' + escapeHtml(poiType) + (el.tags && el.tags[poiType]
+          ? ': ' + escapeHtml(el.tags[poiType])
+          : '') + '</small>';
+      item.addEventListener('click', function () {
+        map.setView([lat, lon], 17);
+        marker.openPopup();
+      });
       listEl.appendChild(item);
     });
 
     var statsEl = document.getElementById('poiStats');
-    if (statsEl) statsEl.textContent = isEl ? 'Βρέθηκαν ' + elements.length + ' POI' : 'Found ' + elements.length + ' POIs';
+    if (statsEl) {
+      statsEl.textContent = isEl
+        ? 'Βρέθηκαν ' + elements.length + ' POI'
+        : 'Found ' + elements.length + ' POIs';
+    }
 
   } catch (err) {
     console.error('POI fetch error:', err);
@@ -133,13 +150,15 @@ function buildPoiPopup(el, poiType) {
     var count = 0;
     Object.keys(el.tags).forEach(function (k) {
       if (count < 10) {
-        html += '<small><strong>' + escapeHtml(k) + ':</strong> ' + escapeHtml(el.tags[k]) + '</small><br/>';
+        html += '<small><strong>' + escapeHtml(k) + ':</strong> ' +
+          escapeHtml(el.tags[k]) + '</small><br/>';
         count++;
       }
     });
   }
 
-  html += '<br/><a href="https://openstreetmap.org/' + el.type + '/' + el.id + '" target="_blank" style="color:#6d4aff">OSM ↗</a>';
+  html += '<br/><a href="https://openstreetmap.org/' + el.type + '/' + el.id +
+    '" target="_blank" style="color:#6d4aff">OSM ↗</a>';
   html += '</div>';
   return html;
 }
@@ -147,7 +166,9 @@ function buildPoiPopup(el, poiType) {
 function clearPoiMarkers() {
   var map = getPoiMap();
   if (!map) return;
-  poiViewerState.mapMarkers.forEach(function (m) { if (m.leaflet) map.removeLayer(m.leaflet); });
+  poiViewerState.mapMarkers.forEach(function (m) {
+    if (m.leaflet) map.removeLayer(m.leaflet);
+  });
   poiViewerState.mapMarkers = [];
 }
 
@@ -156,7 +177,9 @@ function showPoiSpinner(show) {
   if (!btn) return;
   var isEl = getCurrentLang() === 'el';
   btn.disabled = show;
-  btn.textContent = show ? (isEl ? 'Φόρτωση...' : 'Loading...') : (isEl ? 'Φόρτωση' : 'Fetch POIs');
+  btn.textContent = show
+    ? (isEl ? 'Φόρτωση...' : 'Loading...')
+    : (isEl ? 'Φόρτωση' : 'Fetch POIs');
 }
 
 function _poiViewerCleanup() {
@@ -164,4 +187,5 @@ function _poiViewerCleanup() {
   clearPoiMarkers();
   poiViewerState = { mapMarkers: [], isLoading: false };
 }
+
 window._poiViewerCleanup = _poiViewerCleanup;

@@ -7,17 +7,16 @@ var gpxEditorState = {
   trackPoints: [],
   polyline: null,
   markers: [],
-  fileName: ''
+  fileName: '',
 };
+
+function getGpxMap() { return window.appState ? window.appState.map : null; }
 
 function initGpxEditor(map, container, appState) {
   renderGpxEditorUI(container);
-
-  function handleMapClick(lat, lng) {
+  window.onMapClick_gpxEditor = function (lat, lng) {
     addGpxPoint(lat, lng);
-  }
-
-  window.onMapClick_gpxEditor = handleMapClick;
+  };
 }
 
 function renderGpxEditorUI(container) {
@@ -33,15 +32,21 @@ function renderGpxEditorUI(container) {
     '  <button id="geReverseBtn" class="btn btn-secondary btn-sm" disabled>🔄 ' + (isEl ? 'Αναστροφή' : 'Reverse') + '</button>' +
     '  <button id="geClearBtn" class="btn btn-danger">🗑️ ' + (isEl ? 'Καθαρισμός' : 'Clear') + '</button>' +
     '  <hr>' +
-    '  <p id="geInfo" class="note-description">' + (isEl ? 'Κανένα αρχείο φορτωμένο' : 'No file loaded') + '</p>' +
+    '  <div id="geInfo" class="note-description">' + (isEl ? 'Κανένα αρχείο φορτωμένο' : 'No file loaded') + '</div>' +
     '  <div class="note-description">' + (isEl ? 'Κάνε κλικ στον χάρτη για χειροκίνητη προσθήκη σημείων' : 'Click on map to manually add points') + '</div>' +
     '</div>';
 
-  document.getElementById('geFileInput').addEventListener('change', importGPX);
-  document.getElementById('geDownloadBtn').addEventListener('click', downloadGPXFile);
-  document.getElementById('geSimplifyBtn').addEventListener('click', simplifyTrack);
-  document.getElementById('geReverseBtn').addEventListener('click', reverseTrack);
-  document.getElementById('geClearBtn').addEventListener('click', clearGpxEditor);
+  var fileInput = document.getElementById('geFileInput');
+  var downloadBtn = document.getElementById('geDownloadBtn');
+  var simplifyBtn = document.getElementById('geSimplifyBtn');
+  var reverseBtn = document.getElementById('geReverseBtn');
+  var clearBtn = document.getElementById('geClearBtn');
+
+  if (fileInput) fileInput.addEventListener('change', importGPX);
+  if (downloadBtn) downloadBtn.addEventListener('click', downloadGPXFile);
+  if (simplifyBtn) simplifyBtn.addEventListener('click', simplifyTrack);
+  if (reverseBtn) reverseBtn.addEventListener('click', reverseTrack);
+  if (clearBtn) clearBtn.addEventListener('click', clearGpxEditor);
 }
 
 function importGPX(event) {
@@ -78,13 +83,18 @@ function importGPX(event) {
       renderGpxPolyline();
       updateGpxInfo(points.length);
 
-      document.getElementById('geDownloadBtn').disabled = false;
-      document.getElementById('geSimplifyBtn').disabled = false;
-      document.getElementById('geReverseBtn').disabled = false;
-
-      if (window.appState && window.appState.map) {
-        window.appState.map.fitBounds(points, { padding: [50, 50] });
+      var map = getGpxMap();
+      if (map) {
+        map.fitBounds(points, { padding: [50, 50] });
       }
+
+      var dlBtn = document.getElementById('geDownloadBtn');
+      var simpBtn = document.getElementById('geSimplifyBtn');
+      var revBtn = document.getElementById('geReverseBtn');
+      if (dlBtn) dlBtn.disabled = false;
+      if (simpBtn) simpBtn.disabled = false;
+      if (revBtn) revBtn.disabled = false;
+
     } catch (err) {
       alert((isEl ? 'Σφάλμα ανάγνωσης GPX: ' : 'GPX parse error: ') + err.message);
     }
@@ -97,30 +107,37 @@ function addGpxPoint(lat, lng) {
   renderGpxPolyline();
   updateGpxInfo(gpxEditorState.trackPoints.length);
 
-  document.getElementById('geDownloadBtn').disabled = false;
-  document.getElementById('geSimplifyBtn').disabled = false;
-  document.getElementById('geReverseBtn').disabled = false;
+  var dlBtn = document.getElementById('geDownloadBtn');
+  var simpBtn = document.getElementById('geSimplifyBtn');
+  var revBtn = document.getElementById('geReverseBtn');
+  if (dlBtn) dlBtn.disabled = false;
+  if (simpBtn) simpBtn.disabled = false;
+  if (revBtn) revBtn.disabled = false;
 }
 
 function renderGpxPolyline() {
-  if (gpxEditorState.polyline && window.appState && window.appState.map) {
-    window.appState.map.removeLayer(gpxEditorState.polyline);
+  var map = getGpxMap();
+  if (!map) return;
+
+  if (gpxEditorState.polyline) {
+    map.removeLayer(gpxEditorState.polyline);
+    gpxEditorState.polyline = null;
   }
 
   if (gpxEditorState.trackPoints.length >= 2) {
     gpxEditorState.polyline = L.polyline(gpxEditorState.trackPoints, {
       color: '#6d4aff',
       weight: 3,
-      opacity: 0.8
-    }).addTo(window.appState.map);
+      opacity: 0.8,
+    }).addTo(map);
   } else if (gpxEditorState.trackPoints.length === 1) {
     gpxEditorState.polyline = L.circleMarker(gpxEditorState.trackPoints[0], {
       radius: 6,
       fillColor: '#6d4aff',
       color: 'white',
       weight: 1,
-      fillOpacity: 0.8
-    }).addTo(window.appState.map);
+      fillOpacity: 0.8,
+    }).addTo(map);
   }
 }
 
@@ -131,7 +148,7 @@ function updateGpxInfo(count) {
   if (count === 0) {
     info.textContent = isEl ? 'Κανένα αρχείο φορτωμένο' : 'No file loaded';
   } else {
-    info.textContent = (isEl ? count + ' σημεία' : count + ' points');
+    info.textContent = isEl ? count + ' σημεία' : count + ' points';
   }
 }
 
@@ -193,7 +210,9 @@ function douglasPeucker(points, epsilon) {
 function perpDist(point, lineStart, lineEnd) {
   var dx = lineEnd[0] - lineStart[0];
   var dy = lineEnd[1] - lineStart[1];
-  var numerator = Math.abs(dy * point[0] - dx * point[1] + lineEnd[0] * lineStart[1] - lineEnd[1] * lineStart[0]);
+  var numerator = Math.abs(
+    dy * point[0] - dx * point[1] + lineEnd[0] * lineStart[1] - lineEnd[1] * lineStart[0]
+  );
   var denominator = Math.sqrt(dx * dx + dy * dy);
   return denominator === 0 ? 0 : numerator / denominator;
 }
@@ -204,24 +223,32 @@ function reverseTrack() {
 }
 
 function clearGpxEditor() {
-  if (gpxEditorState.polyline && window.appState && window.appState.map) {
-    window.appState.map.removeLayer(gpxEditorState.polyline);
+  var map = getGpxMap();
+
+  if (gpxEditorState.polyline && map) {
+    map.removeLayer(gpxEditorState.polyline);
   }
   gpxEditorState.trackPoints = [];
   gpxEditorState.polyline = null;
   gpxEditorState.fileName = '';
 
-  document.getElementById('geFileInput').value = '';
-  document.getElementById('geDownloadBtn').disabled = true;
-  document.getElementById('geSimplifyBtn').disabled = true;
-  document.getElementById('geReverseBtn').disabled = true;
+  var fileInput = document.getElementById('geFileInput');
+  var dlBtn = document.getElementById('geDownloadBtn');
+  var simpBtn = document.getElementById('geSimplifyBtn');
+  var revBtn = document.getElementById('geReverseBtn');
+
+  if (fileInput) fileInput.value = '';
+  if (dlBtn) dlBtn.disabled = true;
+  if (simpBtn) simpBtn.disabled = true;
+  if (revBtn) revBtn.disabled = true;
   updateGpxInfo(0);
 }
 
 function _gpxEditorCleanup() {
   delete window.onMapClick_gpxEditor;
-  if (window.appState && window.appState.map && gpxEditorState.polyline) {
-    window.appState.map.removeLayer(gpxEditorState.polyline);
+  var map = getGpxMap();
+  if (map && gpxEditorState.polyline) {
+    map.removeLayer(gpxEditorState.polyline);
   }
   gpxEditorState = { trackPoints: [], polyline: null, markers: [], fileName: '' };
 }

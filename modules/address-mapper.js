@@ -1,289 +1,481 @@
 /* =========================================================
    WAYMARK — Address Mapper Module
-   Batch address mapping with login support.
+   Find buildings missing addresses and add them via OSM API.
    ========================================================= */
 
-let addressMapperState = {
+var addressMapperState = {
+  targets: [],
+  mapMarkers: [],
   isLoading: false,
-  addressPoints: [],
+  currentIndex: -1,
+  currentMarker: null,
 };
+
+function getAmMap() { return window.appState ? window.appState.map : null; }
 
 function initAddressMapper(map, container, appState) {
   renderAddressMapperUI(container);
-  checkLoginStatus();
+  refreshAmLoginStatus();
 
-  function handleMapClick(lat, lng) {
-    if (!isLoggedInAddressMapper()) {
-      showNotification(getCurrentLang() === 'el' ? 'Σύνδεσε πρώτα!' : 'Please login first!', 'warning');
-      return;
+  window.addEventListener('storage', function (e) {
+    if (e.key === 'osm_access_token' || e.key === 'osm_user_id' || e.key === 'osm_user_name') {
+      refreshAmLoginStatus();
+      if (window.updateGlobalLoginBtn) window.updateGlobalLoginBtn();
     }
-    showAddressForm(lat, lng);
-  }
+  });
 
-  window.onMapClick_addressMapper = handleMapClick;
+  window.onMapClick_addressMapper = function (lat, lng) {};
 }
 
 function renderAddressMapperUI(container) {
-  const isEl = getCurrentLang() === 'el';
+  var isEl = getCurrentLang() === 'el';
 
-  container.innerHTML = `
-    <div class="address-mapper-ui">
-      <div id="amLoginBadge" class="login-badge">
-        ${isEl ? '❌ Όχι συνδεδεμένος' : '❌ Not logged in'}
-      </div>
+  container.innerHTML =
+    '<div class="address-mapper-ui">' +
+    '  <div id="amLoginBadge" class="login-badge">' +
+    (isEl ? '❌ Όχι συνδεδεμένος' : '❌ Not logged in') + '</div>' +
+    '  <button id="amLoginBtn" class="btn btn-success">🔑 ' +
+    (isEl ? 'Σύνδεση με OSM' : 'Login with OSM') + '</button>' +
+    '  <button id="amLogoutBtn" class="btn btn-danger" style="display:none;">🔓 ' +
+    (isEl ? 'Αποσύνδεση' : 'Logout') + '</button>' +
+    '  <hr>' +
+    '  <div class="note-description">' + (isEl
+      ? 'Βρίσκει κτήρια χωρίς διεύθυνση στην περιοχή που βλέπεις και σε βοηθά να προσθέσεις street + housenumber.'
+      : 'Finds buildings without addresses in your viewport and helps you add street + housenumber.') + '</div>' +
+    '  <button id="amScanBtn" class="btn btn-primary">🔍 ' +
+    (isEl ? 'Σάρωση Περιοχής' : 'Scan Area') + '</button>' +
+    '  <hr>' +
+    '  <div id="amStats" class="note-description"></div>' +
+    '  <div id="amTargets" class="results-list"></div>' +
 
-      <button id="amLoginBtn" class="btn btn-success">
-        🔑 ${isEl ? 'Σύνδεση με OSM' : 'Login with OSM'}
-      </button>
+    '  <div id="amEditPanel" style="display:none;">' +
+    '    <hr>' +
+    '    <h3>' + (isEl ? 'Επεξεργασία Διεύθυνσης' : 'Edit Address') + '</h3>' +
+    '    <div id="amTargetInfo" class="note-description"></div>' +
+    '    <div class="form-group"><label>' + (isEl ? 'Οδός:' : 'Street:') + '</label>' +
+    '      <input type="text" id="amStreet" class="form-control" placeholder="' +
+    (isEl ? 'π.χ. Λεωφόρος Συγγρού' : 'e.g. Syngrou Avenue') + '">' +
+    '    </div>' +
+    '    <div class="form-group"><label>' + (isEl ? 'Αριθμός:' : 'House Number:') + '</label>' +
+    '      <input type="text" id="amHouseNum" class="form-control" placeholder="' +
+    (isEl ? 'π.χ. 42' : 'e.g. 42') + '">' +
+    '    </div>' +
+    '    <div class="form-group"><label>' + (isEl ? 'Ταχυδρομικός Κώδικας:' : 'Postcode:') + '</label>' +
+    '      <input type="text" id="amPostcode" class="form-control" placeholder="' +
+    (isEl ? 'π.χ. 11741' : 'e.g. 11741') + '">' +
+    '    </div>' +
+    '    <div class="form-group"><label>' + (isEl ? 'Changeset Comment:' : 'Changeset Comment:') + '</label>' +
+    '      <input type="text" id="amComment" class="form-control" placeholder="' +
+    (isEl ? 'π.χ. add address tags' : 'e.g. add address tags') + '">' +
+    '    </div>' +
+    '    <button id="amSaveBtn" class="btn btn-success">💾 ' +
+    (isEl ? 'Αποθήκευση' : 'Save') + '</button>' +
+    '    <button id="amSkipBtn" class="btn btn-secondary">⏭️ ' +
+    (isEl ? 'Παράλειψη' : 'Skip') + '</button>' +
+    '  </div>' +
+    '</div>';
 
-      <hr>
+  var loginBtn = document.getElementById('amLoginBtn');
+  var logoutBtn = document.getElementById('amLogoutBtn');
+  var scanBtn = document.getElementById('amScanBtn');
+  var saveBtn = document.getElementById('amSaveBtn');
+  var skipBtn = document.getElementById('amSkipBtn');
 
-      <h3>${isEl ? 'Εισαγωγή Διεύθυνσης' : 'Add Address'}</h3>
-      <div class="form-group">
-        <label>${isEl ? 'Όνομα οδού:' : 'Street name:'}</label>
-        <input type="text" id="amStreetName" class="form-control"
-               placeholder="${isEl ? 'π.χ. Ερμού' : 'e.g. Ermou'}">
-      </div>
-      <div class="form-group">
-        <label>${isEl ? 'Αριθμός:' : 'Number:'}</label>
-        <input type="text" id="amHouseNumber" class="form-control"
-               placeholder="${isEl ? 'π.χ. 42' : 'e.g. 42'}">
-      </div>
-      <div class="form-group">
-        <label>${isEl ? 'Ταχ. Κώδικας:' : 'Postcode:'}</label>
-        <input type="text" id="amPostcode" class="form-control"
-               placeholder="${isEl ? 'π.χ. 10557' : 'e.g. 10557'}">
-      </div>
-      <div class="form-group">
-        <label>${isEl ? 'Πόλη:' : 'City:'}</label>
-        <input type="text" id="amCity" class="form-control"
-               placeholder="${isEl ? 'π.χ. Αθήνα' : 'e.g. Athens'}">
-      </div>
-
-      <button id="amAddPointBtn" class="btn btn-success">
-        📍 ${isEl ? 'Προσθήκη στο χάρτη' : 'Add to Map'}
-      </button>
-      <button id="amUploadBtn" class="btn btn-success" disabled>
-        📤 ${isEl ? 'Ανέβασμα στο OSM' : 'Upload to OSM'}
-      </button>
-      <button id="amClearBtn" class="btn btn-danger">
-        🗑️ ${isEl ? 'Καθαρισμός' : 'Clear'}
-      </button>
-
-      <hr>
-
-      <h3>${isEl ? 'Διευθύνσεις' : 'Addresses'} (<span id="amCount">0</span>)</h3>
-      <div id="amAddressList" class="results-list"></div>
-    </div>
-  `;
-
-  document.getElementById('amLoginBtn').addEventListener('click', initiateOAuthLogin);
-  document.getElementById('amAddPointBtn').addEventListener('click', addAddressPoint);
-  document.getElementById('amUploadBtn').addEventListener('click', uploadAddresses);
-  document.getElementById('amClearBtn').addEventListener('click', clearAddresses);
+  if (loginBtn) loginBtn.addEventListener('click', function () {
+    if (typeof initiateOAuth === 'function') initiateOAuth();
+  });
+  if (logoutBtn) logoutBtn.addEventListener('click', amLogout);
+  if (scanBtn) scanBtn.addEventListener('click', scanArea);
+  if (saveBtn) saveBtn.addEventListener('click', saveAddress);
+  if (skipBtn) skipBtn.addEventListener('click', skipTarget);
 }
 
-function checkLoginStatus() {
-  const badge = document.getElementById('amLoginBadge');
+function refreshAmLoginStatus() {
+  var badge = document.getElementById('amLoginBadge');
   if (!badge) return;
+  var isEl = getCurrentLang() === 'el';
 
-  const token = sessionStorage.getItem('osm_access_token');
-  if (token) {
+  if (window.isLoggedIn && window.isLoggedIn()) {
     badge.classList.add('active');
-    badge.textContent = getCurrentLang() === 'el' ? '✅ Συνδεδεμένος' : '✅ Logged in';
-    document.getElementById('amUploadBtn').disabled = false;
+    var name = localStorage.getItem('osm_user_name') || '';
+    badge.textContent = isEl
+      ? '✅ Συνδεδεμένος' + (name ? ' (' + name + ')' : '')
+      : '✅ Logged in' + (name ? ' (' + name + ')' : '');
+
+    var loginBtn = document.getElementById('amLoginBtn');
+    var logoutBtn = document.getElementById('amLogoutBtn');
+    if (loginBtn) loginBtn.style.display = 'none';
+    if (logoutBtn) logoutBtn.style.display = 'block';
   } else {
     badge.classList.remove('active');
-    badge.textContent = getCurrentLang() === 'el' ? '❌ Όχι συνδεδεμένος' : '❌ Not logged in';
-    document.getElementById('amUploadBtn').disabled = true;
+    badge.textContent = isEl ? '❌ Όχι συνδεδεμένος' : '❌ Not logged in';
+
+    var loginBtn = document.getElementById('amLoginBtn');
+    var logoutBtn = document.getElementById('amLogoutBtn');
+    if (loginBtn) loginBtn.style.display = 'block';
+    if (logoutBtn) logoutBtn.style.display = 'none';
   }
 }
 
-function isLoggedInAddressMapper() {
-  return !!sessionStorage.getItem('osm_access_token');
+function amLogout() {
+  localStorage.removeItem('osm_access_token');
+  localStorage.removeItem('osm_user_id');
+  localStorage.removeItem('osm_user_name');
+  localStorage.removeItem('pkce_verifier');
+  refreshAmLoginStatus();
+  if (window.updateGlobalLoginBtn) window.updateGlobalLoginBtn();
+  showNotification(getCurrentLang() === 'el' ? 'Αποσυνδέθηκες' : 'Logged out', 'info');
 }
 
-function initiateOAuthLogin() {
-  // Reuse osm-editor's OAuth flow
-  if (typeof window.initiateOAuth === 'function') {
-    window.initiateOAuth();
-  } else {
-    alert(getCurrentLang() === 'el' ? 'OSM Editor module required for login' : 'OSM Editor module required for login');
-  }
-}
+async function scanArea() {
+  if (addressMapperState.isLoading) return;
 
-function showAddressForm(lat, lng) {
-  // Pre-fill lat/lon into a temporary holder
-  addressMapperState.pendingLat = lat;
-  addressMapperState.pendingLon = lng;
+  var map = getAmMap();
+  if (!map) return;
 
-  showNotification(getCurrentLang() === 'el'
-    ? `📍 Θέση: ${lat.toFixed(5)}, ${lng.toFixed(5)} — Συμπλήρωσε τα πεδία`
-    : `📍 Position: ${lat.toFixed(5)}, ${lng.toFixed(5)} — Fill in the fields`,
-    'info');
-}
+  var isEl = getCurrentLang() === 'el';
+  addressMapperState.isLoading = true;
 
-function addAddressPoint() {
-  const street = document.getElementById('amStreetName').value.trim();
-  const number = document.getElementById('amHouseNumber').value.trim();
-  const postcode = document.getElementById('amPostcode').value.trim();
-  const city = document.getElementById('amCity').value.trim();
-  const isEl = getCurrentLang() === 'el';
-
-  if (!street || !number) {
-    alert(isEl ? 'Όνομα οδού και αριθμός είναι απαραίτητα' : 'Street name and number are required');
-    return;
+  var scanBtn = document.getElementById('amScanBtn');
+  if (scanBtn) {
+    scanBtn.disabled = true;
+    scanBtn.textContent = isEl ? 'Σάρωση...' : 'Scanning...';
   }
 
-  let lat, lon;
-  if (addressMapperState.pendingLat !== null) {
-    lat = addressMapperState.pendingLat;
-    lon = addressMapperState.pendingLon;
-  } else {
-    const center = window.appState?.map?.getCenter();
-    if (center) {
-      lat = center.lat;
-      lon = center.lng;
-    } else {
-      alert(isEl ? 'Κάνε κλικ στον χάρτη πρώτα' : 'Click on map first');
-      return;
-    }
-  }
-
-  const point = {
-    lat,
-    lon,
-    tags: {
-      'addr:street': street,
-      'addr:housenumber': number,
-      'addr:postcode': postcode,
-      'addr:city': city,
-    }
-  };
-
-  addressMapperState.addressPoints.push(point);
-  addressMapperState.pendingLat = null;
-  addressMapperState.pendingLon = null;
-
-  // Add marker to map
-  const marker = L.circleMarker([lat, lon], {
-    radius: 6,
-    fillColor: '#22c55e',
-    color: 'white',
-    weight: 1,
-    fillOpacity: 0.8,
-  }).addTo(window.appState.map);
-
-  point.marker = marker;
-
-  updateAddressList();
-
-  // Clear inputs
-  document.getElementById('amStreetName').value = '';
-  document.getElementById('amHouseNumber').value = '';
-  document.getElementById('amPostcode').value = '';
-  document.getElementById('amCity').value = '';
-}
-
-function updateAddressList() {
-  const listEl = document.getElementById('amAddressList');
-  const isEl = getCurrentLang() === 'el';
-  listEl.innerHTML = '';
-
-  addressMapperState.addressPoints.forEach((point, idx) => {
-    const item = document.createElement('div');
-    item.className = 'result-item';
-    item.innerHTML = `
-      <strong>${point.tags['addr:street']} ${point.tags['addr:housenumber']}</strong>
-      <small>${point.tags['addr:postcode'] || ''} ${point.tags['addr:city'] || ''}</small>
-      <small>📍 ${point.lat.toFixed(5)}, ${point.lon.toFixed(5)}</small>
-    `;
-
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'btn btn-danger btn-sm';
-    removeBtn.textContent = '🗑️';
-    removeBtn.style.marginTop = '0.25rem';
-    removeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (point.marker) window.appState.map.removeLayer(point.marker);
-      addressMapperState.addressPoints.splice(idx, 1);
-      updateAddressList();
-    });
-
-    item.appendChild(removeBtn);
-    listEl.appendChild(item);
-  });
-
-  document.getElementById('amCount').textContent = addressMapperState.addressPoints.length;
-  document.getElementById('amUploadBtn').disabled = addressMapperState.addressPoints.length === 0;
-}
-
-async function uploadAddresses() {
-  if (!isLoggedInAddressMapper()) {
-    alert(getCurrentLang() === 'el' ? 'Σύνδεσε πρώτα!' : 'Please login first!');
-    return;
-  }
-
-  if (addressMapperState.addressPoints.length === 0) return;
-
-  const isEl = getCurrentLang() === 'el';
-  const comment = prompt(
-    isEl ? 'Σχόλιο changeset:' : 'Changeset comment:',
-    'Added addresses via Waymark'
-  );
-
-  if (!comment) return;
-
-  const token = sessionStorage.getItem('osm_access_token');
+  clearAmMarkers();
 
   try {
-    for (const point of addressMapperState.addressPoints) {
-      const oscXml = buildAddressOsc(point);
-      const result = await uploadOSC(token, oscXml);
-      if (!result.success) {
-        alert(isEl ? `Αποτυχία στη διεύθυνση ${point.tags['addr:street']}: ${result.error}` : `Failed for ${point.tags['addr:street']}: ${result.error}`);
-        return;
+    var bounds = map.getBounds();
+    var bbox = bounds.getSouth() + ',' + bounds.getWest() + ',' +
+               bounds.getNorth() + ',' + bounds.getEast();
+
+    var query = '[out:json][timeout:25];(' +
+      'way["building"]["addr:housenumber"!~".+"](' + bbox + ');' +
+      ');out center 50;';
+
+    var data = await safeOverpassFetch(query, isEl);
+    var elements = data.elements || [];
+
+    addressMapperState.targets = elements;
+
+    var listEl = document.getElementById('amTargets');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+
+    if (elements.length === 0) {
+      listEl.innerHTML = '<p>' + (isEl ? 'Δεν βρέθηκαν κτήρια χωρίς διεύθυνση ✅' : 'No buildings without address found ✅') + '</p>';
+      var statsEl0 = document.getElementById('amStats');
+      if (statsEl0) statsEl0.textContent = '';
+      addressMapperState.isLoading = false;
+      if (scanBtn) {
+        scanBtn.disabled = false;
+        scanBtn.textContent = isEl ? 'Σάρωση Περιοχής' : 'Scan Area';
       }
+      return;
     }
 
-    alert(isEl ? `✅ Ανέβηκαν ${addressMapperState.addressPoints.length} διευθύνσεις!` : `✅ Uploaded ${addressMapperState.addressPoints.length} addresses!`);
-    clearAddresses();
+    elements.forEach(function (el, idx) {
+      var lat = el.center ? el.center.lat : el.lat;
+      var lon = el.center ? el.center.lon : el.lon;
+      if (!lat || !lon) return;
+
+      var marker = L.circleMarker([lat, lon], {
+        radius: 7,
+        fillColor: '#ffb143',
+        color: '#ffb143',
+        weight: 1,
+        fillOpacity: 0.6,
+      }).addTo(map);
+
+      addressMapperState.mapMarkers.push({ leaflet: marker, data: el, index: idx });
+
+      var existingName = el.tags && el.tags.name ? el.tags.name : '';
+      var buildingType = el.tags && el.tags.building ? el.tags.building : 'building';
+      var preview = existingName || buildingType;
+
+      var item = document.createElement('div');
+      item.className = 'result-item';
+      item.innerHTML =
+        '<strong>🏠 ' + escapeHtml(preview) + '</strong>' +
+        '<small>ID: ' + el.id + ' • 📍 ' + lat.toFixed(5) + ', ' + lon.toFixed(5) + '</small>';
+      item.addEventListener('click', function () {
+        openAddressEditor(idx);
+      });
+      listEl.appendChild(item);
+    });
+
+    var statsEl = document.getElementById('amStats');
+    if (statsEl) {
+      statsEl.textContent = isEl
+        ? elements.length + ' κτήρια χωρίς διεύθυνση'
+        : elements.length + ' buildings without address';
+    }
+
   } catch (err) {
-    alert(isEl ? 'Σφάλμα δικτύου: ' + err.message : 'Network error: ' + err.message);
+    console.error('Address scan error:', err);
+    alert((isEl ? 'Σφάλμα: ' : 'Error: ') + err.message);
+  } finally {
+    addressMapperState.isLoading = false;
+    if (scanBtn) {
+      scanBtn.disabled = false;
+      scanBtn.textContent = isEl ? 'Σάρωση Περιοχής' : 'Scan Area';
+    }
   }
 }
 
-function buildAddressOsc(point) {
-  const tagPairs = Object.entries(point.tags).map(([k, v]) =>
-    `        <tag k="${escapeXml(k)}" v="${escapeXml(v)}"/>`
-  ).join('\n');
+function openAddressEditor(index) {
+  var target = addressMapperState.targets[index];
+  if (!target) return;
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<osmChange version="0.6" generator="Waymark">
-  <create>
-    <node lat="${point.lat}" lon="${point.lon}" version="1">
-${tagPairs}
-    </node>
-  </create>
-</osmChange>`;
+  var map = getAmMap();
+  if (!map) return;
+
+  addressMapperState.currentIndex = index;
+  var isEl = getCurrentLang() === 'el';
+
+  var lat = target.center ? target.center.lat : target.lat;
+  var lon = target.center ? target.center.lon : target.lon;
+
+  // Highlight current target
+  if (addressMapperState.currentMarker) {
+    map.removeLayer(addressMapperState.currentMarker);
+  }
+
+  addressMapperState.currentMarker = L.circleMarker([lat, lon], {
+    radius: 12,
+    fillColor: '#6d4aff',
+    color: 'white',
+    weight: 3,
+    fillOpacity: 0.9,
+  }).addTo(map);
+
+  map.setView([lat, lon], 18);
+
+  var infoEl = document.getElementById('amTargetInfo');
+  if (infoEl) {
+    var existingTags = target.tags || {};
+    var tagSummary = Object.keys(existingTags).map(function (k) {
+      return k + ': ' + existingTags[k];
+    }).join(', ');
+
+    infoEl.innerHTML =
+      '<strong>🏠 #' + target.id + '</strong><br>' +
+      '<small>📍 ' + lat.toFixed(6) + ', ' + lon.toFixed(6) + '</small><br>' +
+      '<small>' + escapeHtml(tagSummary.substring(0, 80)) + '</small>';
+  }
+
+  // Pre-fill street name if nearby streets are known
+  var streetInput = document.getElementById('amStreet');
+  if (streetInput) streetInput.value = '';
+  var numInput = document.getElementById('amHouseNum');
+  if (numInput) numInput.value = '';
+  var pcInput = document.getElementById('amPostcode');
+  if (pcInput) pcInput.value = '';
+
+  var editPanel = document.getElementById('amEditPanel');
+  if (editPanel) editPanel.style.display = 'block';
 }
 
-function clearAddresses() {
-  addressMapperState.addressPoints.forEach(p => {
-    if (p.marker) window.appState.map.removeLayer(p.marker);
+async function saveAddress() {
+  var isEl = getCurrentLang() === 'el';
+
+  if (!window.isLoggedIn || !window.isLoggedIn()) {
+    alert(isEl ? 'Σύνδεσου πρώτα!' : 'Login first!');
+    return;
+  }
+
+  if (addressMapperState.currentIndex < 0) return;
+
+  var target = addressMapperState.targets[addressMapperState.currentIndex];
+  if (!target) return;
+
+  var streetEl = document.getElementById('amStreet');
+  var numEl = document.getElementById('amHouseNum');
+  var pcEl = document.getElementById('amPostcode');
+  var commentEl = document.getElementById('amComment');
+
+  var street = streetEl ? streetEl.value.trim() : '';
+  var houseNum = numEl ? numEl.value.trim() : '';
+  var postcode = pcEl ? pcEl.value.trim() : '';
+  var comment = commentEl ? commentEl.value.trim() : (isEl ? 'Προσθήκη διεύθυνσης' : 'Add address');
+
+  if (!street && !houseNum) {
+    alert(isEl ? 'Συμπλήρωσε οδό ή αριθμό' : 'Fill in street or house number');
+    return;
+  }
+
+  var existingTags = target.tags || {};
+  var tags = {};
+
+  // Preserve existing tags
+  Object.keys(existingTags).forEach(function (k) {
+    tags[k] = existingTags[k];
   });
-  addressMapperState.addressPoints = [];
-  updateAddressList();
+
+  // Add/overwrite address tags
+  if (street) tags['addr:street'] = street;
+  if (houseNum) tags['addr:housenumber'] = houseNum;
+  if (postcode) tags['addr:postcode'] = postcode;
+
+  // Build modify OSC
+  var tagLines = Object.keys(tags).map(function (k) {
+    return '      <tag k="' + escapeXml(k) + '" v="' + escapeXml(tags[k]) + '" />';
+  }).join('\n');
+
+  var lat = target.center ? target.center.lat : target.lat;
+  var lon = target.center ? target.center.lon : target.lon;
+
+  var oscXml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<osmChange version="0.6" generator="Waymark">\n' +
+    '  <modify>\n' +
+    '    <way id="' + target.id + '" version="' + (target.version || 1) + '">\n' +
+    tagLines + '\n' +
+    '    </way>\n' +
+    '  </modify>\n' +
+    '</osmChange>';
+
+  var token = localStorage.getItem('osm_access_token');
+  if (!token) {
+    alert(isEl ? 'Δεν υπάρχει token. Σύνδεσου ξανά.' : 'No token. Login again.');
+    return;
+  }
+
+  var saveBtn = document.getElementById('amSaveBtn');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = isEl ? 'Αποθήκευση...' : 'Saving...';
+  }
+
+  showNotification(isEl ? 'Ανέβασμα στο OSM...' : 'Uploading to OSM...', 'info');
+
+  try {
+    var result = await uploadAmOSC(token, oscXml, comment);
+
+    if (result.success) {
+      showNotification(isEl ? '✅ Αποθηκεύτηκε!' : '✅ Saved!', 'success');
+
+      // Update marker color to green (done)
+      var markerInfo = addressMapperState.mapMarkers[addressMapperState.currentIndex];
+      if (markerInfo && markerInfo.leaflet) {
+        markerInfo.leaflet.setStyle({ fillColor: '#22c55e', color: '#22c55e' });
+      }
+
+      // Move to next target
+      skipTarget();
+    } else {
+      alert((isEl ? 'Αποτυχία: ' : 'Failed: ') + result.error);
+    }
+  } catch (err) {
+    alert((isEl ? 'Σφάλμα: ' : 'Error: ') + err.message);
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = isEl ? 'Αποθήκευση' : 'Save';
+    }
+  }
+}
+
+function uploadAmOSC(accessToken, oscContent, changesetComment) {
+  var cfg = window.WAYMARK_CONFIG || {};
+  var proxyUrl = cfg.PROXY_URL;
+
+  if (!proxyUrl) {
+    return Promise.reject(new Error('PROXY_URL not configured'));
+  }
+
+  var changesetXml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<osm version="0.6" generator="Waymark">\n' +
+    '<changeset>\n' +
+    '  <tag k="created_by" v="Waymark"/>\n' +
+    '  <tag k="comment" v="' + escapeXml(changesetComment || 'Waymark address edit') + '"/>\n' +
+    '</changeset>\n' +
+    '</osm>';
+
+  return fetch(proxyUrl + '/api/0.6/changeset/open', {
+    method: 'PUT',
+    headers: {
+      'Authorization': 'Bearer ' + accessToken,
+      'Content-Type': 'application/xml',
+    },
+    body: changesetXml,
+  })
+    .then(function (resp) {
+      if (!resp.ok) return resp.text().then(function (t) { throw new Error('Open changeset: ' + t); });
+      return resp.text();
+    })
+    .then(function (changesetId) {
+      changesetId = changesetId.trim();
+
+      return fetch(proxyUrl + '/api/0.6/changeset/' + changesetId + '/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + accessToken,
+          'Content-Type': 'application/xml',
+        },
+        body: oscContent,
+      })
+        .then(function (uploadResp) {
+          if (!uploadResp.ok) return uploadResp.text().then(function (t) { throw new Error('Upload: ' + t); });
+          return uploadResp.text();
+        })
+        .then(function (diffResult) {
+          var idMatch = diffResult.match(/id="(\d+)"/);
+          var newId = idMatch ? idMatch[1] : null;
+
+          return fetch(proxyUrl + '/api/0.6/changeset/' + changesetId + '/close', {
+            method: 'PUT',
+            headers: {
+              'Authorization': 'Bearer ' + accessToken,
+              'Content-Type': 'text/plain',
+            },
+          }).then(function () {
+            return { success: true, newId: newId };
+          });
+        });
+    })
+    .catch(function (err) {
+      return { success: false, error: err.message };
+    });
+}
+
+function skipTarget() {
+  var map = getAmMap();
+  if (map && addressMapperState.currentMarker) {
+    map.removeLayer(addressMapperState.currentMarker);
+    addressMapperState.currentMarker = null;
+  }
+
+  var editPanel = document.getElementById('amEditPanel');
+  if (editPanel) editPanel.style.display = 'none';
+
+  addressMapperState.currentIndex = -1;
+}
+
+function clearAmMarkers() {
+  var map = getAmMap();
+  if (!map) return;
+
+  addressMapperState.mapMarkers.forEach(function (m) {
+    if (m.leaflet) map.removeLayer(m.leaflet);
+  });
+  addressMapperState.mapMarkers = [];
+
+  if (addressMapperState.currentMarker) {
+    map.removeLayer(addressMapperState.currentMarker);
+    addressMapperState.currentMarker = null;
+  }
 }
 
 function _addressMapperCleanup() {
   delete window.onMapClick_addressMapper;
-  if (window.appState?.map) {
-    addressMapperState.addressPoints.forEach(p => {
-      if (p.marker) window.appState.map.removeLayer(p.marker);
-    });
-  }
-  addressMapperState = { isLoading: false, addressPoints: [] };
+  clearAmMarkers();
+  addressMapperState = {
+    targets: [],
+    mapMarkers: [],
+    isLoading: false,
+    currentIndex: -1,
+    currentMarker: null,
+  };
 }
 
 window._addressMapperCleanup = _addressMapperCleanup;

@@ -1,17 +1,21 @@
 /* =========================================================
    WAYMARK — Shared Utilities
+   Escape functions, file download, Overpass fetch,
+   notification system.
    ========================================================= */
 
 (function () {
   'use strict';
 
+  // ── Escape HTML ──
   function escapeHtml(str) {
     if (!str) return '';
-    const div = document.createElement('div');
+    var div = document.createElement('div');
     div.textContent = String(str);
     return div.innerHTML;
   }
 
+  // ── Escape XML ──
   function escapeXml(str) {
     if (!str) return '';
     return String(str).replace(/[<>&'"]/g, function (c) {
@@ -19,10 +23,11 @@
     });
   }
 
+  // ── Download File ──
   function downloadFile(content, filename, mimeType) {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    var blob = new Blob([content], { type: mimeType });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
     a.href = url;
     a.download = filename;
     document.body.appendChild(a);
@@ -31,8 +36,9 @@
     URL.revokeObjectURL(url);
   }
 
+  // ── Safe Overpass Fetch (with failover) ──
   async function safeOverpassFetch(query, isEl) {
-    const servers = [
+    var servers = [
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter'
     ];
@@ -68,12 +74,14 @@
     throw new Error(isEl ? 'Αδυναμία σύνδεσης με Overpass API' : 'Cannot connect to Overpass API');
   }
 
+  // ── Show Notification ──
   function showNotification(message, type) {
     var existing = document.getElementById('waymark-notification');
     if (existing) existing.remove();
 
     var notif = document.createElement('div');
     notif.id = 'waymark-notification';
+
     var bgColor = '#6d4aff';
     if (type === 'success') bgColor = '#22c55e';
     else if (type === 'warning') bgColor = '#ffb143';
@@ -97,6 +105,7 @@
     }, 3000);
   }
 
+  // ── Global exports ──
   window.escapeHtml = escapeHtml;
   window.escapeXml = escapeXml;
   window.downloadFile = downloadFile;

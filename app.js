@@ -1,10 +1,12 @@
 /* =========================================================
    WAYMARK — Main Application Logic
+   Privacy-first OSM PWA • July 2024
    ========================================================= */
 
 (function () {
   'use strict';
 
+  // ── Global State ──
   window.appState = {
     map: null,
     activeModule: null,
@@ -13,53 +15,122 @@
     locationMarker: null,
   };
 
+  // ── Module Registry ──
   var MODULES = [
-    { id: 'nominatim',       name: { en: 'Search',           el: 'Αναζήτηση' },       init: 'initNominatim',       cleanup: '_nominatimCleanup' },
-    { id: 'poi-viewer',      name: { en: 'POI Viewer',       el: 'POI Προβολή' },      init: 'initPoiViewer',      cleanup: '_poiViewerCleanup' },
-    { id: 'gpx-editor',      name: { en: 'GPX Editor',       el: 'GPX Επεξεργασία' },  init: 'initGpxEditor',      cleanup: '_gpxEditorCleanup' },
-    { id: 'xml-generator',   name: { en: 'XML Generator',    el: 'XML Γεννήτρια' },    init: 'initXmlGenerator',   cleanup: '_xmlGeneratorCleanup' },
-    { id: 'osm-editor',      name: { en: 'OSM Editor',      el: 'OSM Επεξεργασία' },  init: 'initOsmEditor',      cleanup: '_osmEditorCleanup' },
-    { id: 'quality-checker', name: { en: 'Quality Checker',  el: 'Ποιότητα' },         init: 'initQualityChecker', cleanup: '_qualityCheckerCleanup' },
-    { id: 'heatmap',         name: { en: 'Heatmap',         el: 'Heatmap' },          init: 'initHeatmap',        cleanup: '_heatmapCleanup' },
-    { id: 'tags-lookup',     name: { en: 'Tags Lookup',     el: 'Tags' },             init: 'initTagsLookup',     cleanup: '_tagsLookupCleanup' },
-    { id: 'notes-browser',   name: { en: 'Notes Browser',   el: 'Σημειώσεις' },       init: 'initNotesBrowser',   cleanup: '_notesBrowserCleanup' },
-    { id: 'track-recorder',  name: { en: 'Track Recorder',  el: 'Καταγραφή' },        init: 'initTrackRecorder',  cleanup: '_trackRecorderCleanup' },
-    { id: 'building-editor', name: { en: 'Building Editor',  el: 'Κτήρια' },          init: 'initBuildingEditor', cleanup: '_buildingEditorCleanup' },
-    { id: 'road-editor',     name: { en: 'Road Editor',     el: 'Δρόμοι' },           init: 'initRoadEditor',     cleanup: '_roadEditorCleanup' },
-    { id: 'address-mapper',  name: { en: 'Address Mapper',  el: 'Διευθύνσεις' },      init: 'initAddressMapper',  cleanup: '_addressMapperCleanup' },
-    { id: 'quest-mode',      name: { en: 'Quest Mode',      el: 'Quests' },           init: 'initQuestMode',      cleanup: '_questModeCleanup' },
+    { id: 'nominatim',       name: { en: 'Search',         el: 'Αναζήτηση' },      init: 'initNominatim',       cleanup: '_nominatimCleanup' },
+    { id: 'poi-viewer',      name: { en: 'POI Viewer',     el: 'POI Προβολή' },     init: 'initPoiViewer',      cleanup: '_poiViewerCleanup' },
+    { id: 'gpx-editor',      name: { en: 'GPX Editor',     el: 'GPX Επεξεργασία' },init: 'initGpxEditor',      cleanup: '_gpxEditorCleanup' },
+    { id: 'xml-generator',   name: { en: 'XML Generator', el: 'XML Γεννήτρια' },  init: 'initXmlGenerator',   cleanup: '_xmlGeneratorCleanup' },
+    { id: 'osm-editor',      name: { en: 'OSM Editor',     el: 'OSM Επεξεργασία' },init: 'initOsmEditor',      cleanup: '_osmEditorCleanup' },
+    { id: 'quality-checker', name: { en: 'Quality Checker',el: 'Ποιότητα' },       init: 'initQualityChecker', cleanup: '_qualityCheckerCleanup' },
+    { id: 'heatmap',         name: { en: 'Heatmap',         el: 'Heatmap' },        init: 'initHeatmap',        cleanup: '_heatmapCleanup' },
+    { id: 'tags-lookup',     name: { en: 'Tags Lookup',    el: 'Tags' },           init: 'initTagsLookup',     cleanup: '_tagsLookupCleanup' },
+    { id: 'notes-browser',   name: { en: 'Notes Browser',  el: 'Σημειώσεις' },     init: 'initNotesBrowser',   cleanup: '_notesBrowserCleanup' },
+    { id: 'track-recorder',  name: { en: 'Track Recorder', el: 'Καταγραφή' },     init: 'initTrackRecorder',  cleanup: '_trackRecorderCleanup' },
+    { id: 'building-editor', name: { en: 'Building Editor',el: 'Κτήρια' },        init: 'initBuildingEditor', cleanup: '_buildingEditorCleanup' },
+    { id: 'road-editor',     name: { en: 'Road Editor',    el: 'Δρόμοι' },         init: 'initRoadEditor',     cleanup: '_roadEditorCleanup' },
+    { id: 'address-mapper',  name: { en: 'Address Mapper', el: 'Διευθύνσεις' },    init: 'initAddressMapper',  cleanup: '_addressMapperCleanup' },
+    { id: 'quest-mode',      name: { en: 'Quest Mode',     el: 'Quests' },         init: 'initQuestMode',      cleanup: '_questModeCleanup' },
   ];
 
+  // ── DOM Ready ──
   document.addEventListener('DOMContentLoaded', initApp);
 
+  // ── Initialize App ──
   function initApp() {
+    initHeaderButtons();
     initMap();
     initLayers();
     initModuleToggles();
     initLocationButton();
+    initGlobalLogin();
     initResizeHandler();
     registerServiceWorker();
+    applyTranslations();
 
-    // ── HIDE LOADING OVERLAY ──
+    // Hide loading overlay
     var overlay = document.getElementById('loadingOverlay');
     if (overlay) {
       overlay.style.opacity = '0';
-      setTimeout(function () {
-        overlay.style.display = 'none';
-      }, 300);
+      setTimeout(function () { overlay.style.display = 'none'; }, 300);
     }
 
-    // Force map size recalculation after overlay removal
+    // Recalculate map size after overlay removal
     setTimeout(function () {
       if (window.appState.map) window.appState.map.invalidateSize();
     }, 350);
   }
 
+  // ── Header Buttons (Theme, Language, Help/Login) ──
+  function initHeaderButtons() {
+    var isEl = getCurrentLang() === 'el';
+
+    // Language Button
+    var langBtn = document.getElementById('langBtn');
+    if (langBtn) {
+      langBtn.textContent = isEl ? 'EN' : 'ΕΛ';
+      langBtn.addEventListener('click', function () {
+        var newLang = isEl ? 'en' : 'el';
+        if (typeof setLanguage === 'function') {
+          setLanguage(newLang);
+        } else {
+          localStorage.setItem('waymark_lang', newLang);
+          location.reload();
+        }
+      });
+    }
+
+    // Theme Button
+    var themeBtn = document.getElementById('themeBtn');
+    if (themeBtn) {
+      updateThemeBtn();
+      themeBtn.addEventListener('click', function () {
+        var cur = document.documentElement.getAttribute('data-theme') || 'dark';
+        var nw = cur === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', nw);
+        localStorage.setItem('waymark_theme', nw);
+
+        if (typeof window.setTheme === 'function') {
+          window.setTheme(nw);
+        }
+
+        updateThemeBtn();
+        if (window.appState.map) {
+          setTimeout(function () { window.appState.map.invalidateSize(); }, 100);
+        }
+      });
+    }
+
+    // Help/Tutorial Button
+    var helpBtn = document.getElementById('helpBtn');
+    if (helpBtn) {
+      helpBtn.addEventListener('click', function () {
+        var content = document.getElementById('moduleContent');
+        var panel = document.getElementById('activeModulePanel');
+        var title = document.getElementById('activeModuleTitle');
+
+        if (panel) panel.classList.add('active');
+        if (title) title.textContent = isEl ? ' Βοήθεια' : 'Help';
+        if (content) {
+          content.innerHTML =
+            '<div style="font-size:0.85rem;line-height:1.6;">' +
+            '<h3>' + (isEl ? 'Πώς να χρησιμοποιήσεις το Waymark' : 'How to use Waymark') + '</h3>' +
+            '<p><strong>1.</strong> ' + (isEl ? 'Ενεργοποίησε μια λειτουργία από το αριστερό πάνελ.' : 'Enable a feature from the left panel.') + '</p>' +
+            '<p><strong>2.</strong> ' + (isEl ? 'Κάνε κλικ στον χάρτη για να προσθέσεις σημεία.' : 'Click on the map to add points.') + '</p>' +
+            '<p><strong>3.</strong> ' + (isEl ? 'Για επεξεργασία OSM, σύνδεσου πρώτα με τον λογαριασμό σου.' : 'For OSM editing, login first with your account.') + '</p>' +
+            '<p><strong>4.</strong> ' + (isEl ? 'Χρησιμοποίησε το 📍 για να βρεις τη θέση σου.' : 'Use 📍 to find your location.') + '</p>' +
+            '<hr>' +
+            '<p style="color:var(--fg-muted)">' + (isEl ? 'Waymark είναι open-source, privacy-first εργαλείο για το OpenStreetMap.' : 'Waymark is open-source, privacy-first tool for OpenStreetMap.') + '</p>' +
+            '</div>';
+        }
+      });
+    }
+  }
+
+  // ── Map Initialization ──
   function initMap() {
     var mapEl = document.getElementById('map');
     if (!mapEl) { console.error('Map element not found'); return; }
-
-    console.log('Initializing map...');
 
     window.appState.map = L.map('map', {
       center: [37.9838, 23.7275],
@@ -70,6 +141,7 @@
 
     L.control.scale({ imperial: false, metric: true }).addTo(window.appState.map);
 
+    // Map click handler — dispatch to active modules
     window.appState.map.on('click', function (e) {
       var lat = e.latlng.lat;
       var lng = e.latlng.lng;
@@ -97,13 +169,16 @@
     });
   }
 
+  // ── Layers (with Cycle & Transit restored) ──
   function initLayers() {
     var cfg = window.WAYMARK_CONFIG || {};
     var layers = cfg.LAYERS || [
-      { id: 'standard', name: { en: 'Standard', el: 'Standard' }, url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '© OpenStreetMap', maxZoom: 19 },
-      { id: 'satellite', name: { en: 'Satellite', el: 'Δορυφορικό' }, url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: '© Esri', maxZoom: 19 },
-      { id: 'dark', name: { en: 'Dark', el: 'Σκούρο' }, url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attribution: '© CARTO © OSM', maxZoom: 19, subdomains: 'abcd' },
-      { id: 'topographic', name: { en: 'Topographic', el: 'Τοπογραφικό' }, url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', attribution: '© OpenTopoMap © OSM', maxZoom: 17, subdomains: 'abc' },
+      { id: 'standard',   name: { en: 'Standard',    el: 'Standard' },    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',                                                              attribution: '© OpenStreetMap', maxZoom: 19 },
+      { id: 'satellite',  name: { en: 'Satellite',   el: 'Δορυφορικό' },  url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',                attribution: '© Esri', maxZoom: 19 },
+      { id: 'dark',       name: { en: 'Dark',        el: 'Σκούρο' },      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',                                               attribution: '© CARTO © OSM', maxZoom: 19, subdomains: 'abcd' },
+      { id: 'topographic',name: { en: 'Topographic', el: 'Τοπογραφικό' }, url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',                                                            attribution: '© OpenTopoMap © OSM', maxZoom: 17, subdomains: 'abc' },
+      { id: 'cycle',      name: { en: 'Cycle',       el: 'Ποδήλατο' },    url: 'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',                                            attribution: '© CyclOSM © OSM', maxZoom: 19, subdomains: 'abc' },
+      { id: 'transit',    name: { en: 'Transit',     el: 'Μεταφορές' },   url: 'https://{s}.tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=' + (cfg.TF_API_KEY || ''),              attribution: '© Thunderforest © OSM', maxZoom: 19, subdomains: 'abc' },
     ];
 
     layers.forEach(function (layerCfg) {
@@ -119,12 +194,12 @@
       window.appState.currentBaseLayer = firstId;
     }
 
+    // Render layer buttons
     var container = document.getElementById('layerControls');
     if (!container) return;
     container.innerHTML = '';
 
     var isEl = getCurrentLang() === 'el';
-
     layers.forEach(function (layerCfg) {
       var btn = document.createElement('button');
       btn.className = 'layer-btn' + (layerCfg.id === firstId ? ' active' : '');
@@ -148,13 +223,13 @@
     });
   }
 
+  // ── Module Toggles ──
   function initModuleToggles() {
     var container = document.getElementById('moduleToggles');
     if (!container) return;
     container.innerHTML = '';
 
     var isEl = getCurrentLang() === 'el';
-
     MODULES.forEach(function (mod) {
       var wrapper = document.createElement('div');
       wrapper.className = 'module-toggle-wrapper';
@@ -174,10 +249,12 @@
     });
   }
 
+  // ── Activate Module ──
   function activateModule(moduleId) {
     var mod = MODULES.find(function (m) { return m.id === moduleId; });
     if (!mod) return;
 
+    // Deactivate current module if different
     if (window.appState.activeModule && window.appState.activeModule !== moduleId) {
       deactivateModule(window.appState.activeModule);
     }
@@ -209,6 +286,7 @@
     }
   }
 
+  // ── Deactivate Module ──
   function deactivateModule(moduleId) {
     var mod = MODULES.find(function (m) { return m.id === moduleId; });
     if (!mod) return;
@@ -230,14 +308,13 @@
 
   window.activateModule = activateModule;
   window.deactivateModule = deactivateModule;
-  window.switchLayer = switchLayer;
-
   window.closeActivePanel = function () {
     if (window.appState.activeModule) {
       deactivateModule(window.appState.activeModule);
     }
   };
 
+  // ── Location Button ──
   function initLocationButton() {
     var btn = document.getElementById('locationBtn');
     if (!btn) return;
@@ -259,11 +336,7 @@
         }
 
         window.appState.locationMarker = L.circleMarker([lat, lng], {
-          radius: 10,
-          fillColor: '#6d4aff',
-          color: 'white',
-          weight: 3,
-          fillOpacity: 0.8
+          radius: 10, fillColor: '#6d4aff', color: 'white', weight: 3, fillOpacity: 0.8
         }).addTo(window.appState.map);
 
         window.appState.locationMarker.bindPopup(getCurrentLang() === 'el' ? 'Είσαι εδώ' : 'You are here');
@@ -275,6 +348,92 @@
     });
   }
 
+  // ── Global Login Button ──
+  function initGlobalLogin() {
+    var btn = document.getElementById('globalLoginBtn');
+    if (!btn) return;
+
+    updateGlobalLoginBtn();
+
+    btn.addEventListener('click', function () {
+      if (isLoggedIn()) {
+        localStorage.removeItem('osm_access_token');
+        localStorage.removeItem('osm_user_id');
+        localStorage.removeItem('osm_user_name');
+        localStorage.removeItem('pkce_verifier');
+        updateGlobalLoginBtn();
+        showNotification(getCurrentLang() === 'el' ? 'Αποσυνδέθηκες' : 'Logged out', 'info');
+      } else {
+        if (typeof initiateOAuth === 'function') {
+          initiateOAuth();
+        }
+      }
+    });
+
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'osm_access_token' || e.key === 'osm_user_id' || e.key === 'osm_user_name') {
+        updateGlobalLoginBtn();
+      }
+    });
+  }
+
+  function updateGlobalLoginBtn() {
+    var btn = document.getElementById('globalLoginBtn');
+    if (!btn) return;
+    if (isLoggedIn()) {
+      var name = localStorage.getItem('osm_user_name') || '✅';
+      btn.textContent = '🔓';
+      btn.title = name;
+      btn.classList.add('logged-in');
+    } else {
+      btn.textContent = '🔐';
+      btn.title = 'Login';
+      btn.classList.remove('logged-in');
+    }
+  }
+  window.updateGlobalLoginBtn = updateGlobalLoginBtn;
+
+  function isLoggedIn() {
+    return !!localStorage.getItem('osm_access_token');
+  }
+  window.isLoggedIn = isLoggedIn;
+
+  // ── Theme Button Icon ──
+  function updateThemeBtn() {
+    var themeBtn = document.getElementById('themeBtn');
+    if (!themeBtn) return;
+    var theme = document.documentElement.getAttribute('data-theme') || 'dark';
+    themeBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
+  }
+
+  // ── Apply Translations ──
+  function applyTranslations() {
+    var isEl = getCurrentLang() === 'el';
+    var modulesTitle = document.getElementById('modulesTitle');
+    var layersTitle = document.getElementById('layersTitle');
+
+    if (modulesTitle) modulesTitle.textContent = isEl ? 'Λειτουργίες' : 'Modules';
+    if (layersTitle) layersTitle.textContent = isEl ? 'Στρώματα' : 'Layers';
+
+    var langBtn = document.getElementById('langBtn');
+    if (langBtn) langBtn.textContent = isEl ? 'EN' : 'ΕΛ';
+
+    initModuleToggles();
+    initGlobalLogin();
+  }
+  window.applyTranslations = applyTranslations;
+
+  function getCurrentLang() {
+    try {
+      if (typeof window.getLanguage === 'function') return window.getLanguage();
+      return localStorage.getItem('waymark_lang') || (navigator.language || 'en').startsWith('el') ? 'el' : 'en';
+    } catch (e) {
+      return 'en';
+    }
+  }
+  window.getCurrentLang = getCurrentLang;
+
+  // ── Resize Handler ──
   function initResizeHandler() {
     var timer = null;
     window.addEventListener('resize', function () {
@@ -291,6 +450,7 @@
     });
   }
 
+  // ── Service Worker ──
   function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then(function (reg) {

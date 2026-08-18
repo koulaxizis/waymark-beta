@@ -490,6 +490,10 @@ html, body {
 
 .btn-sm { padding: 0.35rem 0.55rem; font-size: 0.76rem; width: auto; }
 
+.btn-primary { background: var(--accent); color: white; border-color: var(--accent); font-weight: 600; }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-primary:disabled:hover { filter: none; background: var(--accent); }
+
 /* =========================================================
    LOGIN BADGE
    ========================================================= */

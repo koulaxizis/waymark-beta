@@ -1,260 +1,352 @@
 /* =========================================================
    WAYMARK — Road Editor Module
-   Draw road polylines and upload to OSM.
+   Add/edit road segments on OSM.
    ========================================================= */
 
-let roadEditorState = {
+var roadEditorState = {
   points: [],
   polyline: null,
-  markers: [],
-  isLoading: false,
+  selectedNodes: [],
 };
+
+function getReMap() { return window.appState ? window.appState.map : null; }
 
 function initRoadEditor(map, container, appState) {
   renderRoadEditorUI(container);
-  checkRoadLoginStatus();
+  refreshLoginStatus();
 
-  function handleMapClick(lat, lng) {
-    if (!isLoggedInRoad()) {
-      showNotification(getCurrentLang() === 'el' ? 'Σύνδεσε πρώτα!' : 'Please login first!', 'warning');
+  window.addEventListener('storage', function (e) {
+    if (e.key === 'osm_access_token' || e.key === 'osm_user_id' || e.key === 'osm_user_name') {
+      refreshLoginStatus();
+      if (window.updateGlobalLoginBtn) window.updateGlobalLoginBtn();
+    }
+  });
+
+  window.onMapClick_roadEditor = function (lat, lng) {
+    if (!window.isLoggedIn || !window.isLoggedIn()) {
+      showNotification(
+        getCurrentLang() === 'el' ? 'Σύνδεσου πρώτα!' : 'Login first!',
+        'warning'
+      );
       return;
     }
     addRoadPoint(lat, lng);
-  }
+  };
+}
 
-  window.onMapClick_roadEditor = handleMapClick;
+function refreshLoginStatus() {
+  var badge = document.getElementById('reLoginBadge');
+  if (!badge) return;
+  var isEl = getCurrentLang() === 'el';
+
+  if (window.isLoggedIn && window.isLoggedIn()) {
+    badge.classList.add('active');
+    var name = localStorage.getItem('osm_user_name') || '';
+    badge.textContent = isEl
+      ? '✅ Συνδεδεμένος' + (name ? ' (' + name + ')' : '')
+      : '✅ Logged in' + (name ? ' (' + name + ')' : '');
+
+    var loginBtn = document.getElementById('reLoginBtn');
+    var logoutBtn = document.getElementById('reLogoutBtn');
+    if (loginBtn) loginBtn.style.display = 'none';
+    if (logoutBtn) logoutBtn.style.display = 'block';
+  } else {
+    badge.classList.remove('active');
+    badge.textContent = isEl ? '❌ Όχι συνδεδεμένος' : '❌ Not logged in';
+
+    var loginBtn = document.getElementById('reLoginBtn');
+    var logoutBtn = document.getElementById('reLogoutBtn');
+    if (loginBtn) loginBtn.style.display = 'block';
+    if (logoutBtn) logoutBtn.style.display = 'none';
+  }
 }
 
 function renderRoadEditorUI(container) {
-  const isEl = getCurrentLang() === 'el';
+  var isEl = getCurrentLang() === 'el';
 
-  container.innerHTML = `
-    <div class="road-editor-ui">
-      <div id="reLoginBadge" class="login-badge">
-        ${isEl ? '❌ Όχι συνδεδεμένος' : '❌ Not logged in'}
-      </div>
+  container.innerHTML =
+    '<div class="road-editor-ui">' +
 
-      <button id="reLoginBtn" class="btn btn-success">
-        🔑 ${isEl ? 'Σύνδεση με OSM' : 'Login with OSM'}
-      </button>
+    '<div id="reLoginBadge" class="login-badge">' +
+    (isEl ? '❌ Όχι συνδεδεμένος' : '❌ Not logged in') + '</div>' +
+    '<button id="reLoginBtn" class="btn btn-success">🔑 ' +
+    (isEl ? 'Σύνδεση με OSM' : 'Login with OSM') + '</button>' +
+    '<button id="reLogoutBtn" class="btn btn-danger" style="display:none;">🔓 ' +
+    (isEl ? 'Αποσύνδεση' : 'Logout') + '</button>' +
 
-      <hr>
+    '<hr>' +
 
-      <h3>${isEl ? 'Σχεδιασμός Δρόμου' : 'Draw Road'}</h3>
-      <div class="form-group">
-        <label>${isEl ? 'Τύπος δρόμου:' : 'Road type:'}</label>
-        <select id="reRoadType" class="form-control">
-          <option value="residential">Residential</option>
-          <option value="living_street">Living Street</option>
-          <option value="service">Service</option>
-          <option value="pedestrian">Pedestrian</option>
-          <option value="track">Track</option>
-          <option value="unclassified">Unclassified</option>
-          <option value="tertiary">Tertiary</option>
-          <option value="secondary">Secondary</option>
-          <option value="primary">Primary</option>
-          <option value="footway">Footway</option>
-          <option value="path">Path</option>
-          <option value="cycleway">Cycleway</option>
-          <option value="steps">Steps</option>
-        </select>
-      </div>
+    '<div class="note-description">' + (isEl
+      ? 'Κάνε κλικ στον χάρτη για να προσθέσεις σημεία δρόμου. Το τελευταίο σημείο είναι το "head" του δρόμου.'
+      : 'Click on map to add road points. The last point is the road "head".') + '</div>' +
 
-      <div class="form-group">
-        <label>${isEl ? 'Όνομα (προαιρετικό):' : 'Name (optional):'}</label>
-        <input type="text" id="reRoadName" class="form-control" placeholder="">
-      </div>
+    '<div class="form-group"><label>' + (isEl ? 'Τύπος Δρόμου:' : 'Road Type:') + '</label>' +
+    '<select id="reRoadType" class="form-control">' +
+    '  <option value="residential">' + (isEl ? 'Κατοικητική' : 'Residential') + '</option>' +
+    '  <option value="service">' + (isEl ? 'Σειραφ' : 'Service') + '</option>' +
+    '  <option value="track">' + (isEl ? 'Διαδρομή' : 'Track') + '</option>' +
+    '  <option value="footway">' + (isEl ? 'Πεζοδρόμιο' : 'Footway') + '</option>' +
+    '  <option value="path">' + (isEl ? 'Διαδρομή' : 'Path') + '</option>' +
+    '</select></div>' +
 
-      <div class="form-group">
-        <label>${isEl ? 'Surface:' : 'Surface:'}</label>
-        <select id="reSurface" class="form-control">
-          <option value="">${isEl ? '— Μη καθορισμένο —' : '— Unspecified —'}</option>
-          <option value="asphalt">Asphalt</option>
-          <option value="paved">Paved</option>
-          <option value="unpaved">Unpaved</option>
-          <option value="gravel">Gravel</option>
-          <option value="ground">Ground</option>
-          <option value="sand">Sand</option>
-          <option value="cobblestone">Cobblestone</option>
-          <option value="concrete">Concrete</option>
-          <option value="dirt">Dirt</option>
-        </select>
-      </div>
+    '<div class="form-group"><label>' + (isEl ? 'Όνομα (προαιρετικό):' : 'Name (optional):') + '</label>' +
+    '<input type="text" id="reRoadName" class="form-control" placeholder="' +
+    (isEl ? 'π.χ. Οδός Παπαδιαμάντη' : 'e.g. Papadiamanti Street') + '"></div>' +
 
-      <button id="reUndoPointBtn" class="btn btn-secondary btn-sm">⬅️ ${isEl ? 'Αναίρεση' : 'Undo'}</button>
-      <button id="reFinishBtn" class="btn btn-success">✅ ${isEl ? 'Ολοκλήρωση' : 'Finish'}</button>
-      <button id="reUploadBtn" class="btn btn-success" disabled>
-        📤 ${isEl ? 'Ανέβασμα στο OSM' : 'Upload to OSM'}
-      </button>
-      <button id="reClearBtn" class="btn btn-danger">🗑️ ${isEl ? 'Καθαρισμός' : 'Clear'}</button>
+    '<div class="form-group"><label>' + (isEl ? 'Μέγιστη Ταχύτητα:' : 'Max Speed:') + '</label>' +
+    '<input type="text" id="reMaxSpeed" class="form-control" placeholder="' +
+    (isEl ? 'π.χ. 50 km/h' : 'e.g. 50 km/h') + '"></div>' +
 
-      <hr>
+    '<div class="form-group"><label>' + (isEl ? 'Changeset Comment:' : 'Changeset Comment:') + '</label>' +
+    '<input type="text" id="reComment" class="form-control"' +
+    'placeholder="' + (isEl ? 'π.χ. add residential road' : 'e.g. add residential road') + '"></div>' +
 
-      <p id="rePointCount" class="note-description">${isEl ? '0 σημεία' : '0 points'}</p>
-    </div>
-  `;
+    '<button id="reCreateBtn" class="btn btn-success">🛣️ ' +
+    (isEl ? 'Δημιουργία Δρόμου' : 'Create Road') + '</button>' +
+    '<button id="reClearBtn" class="btn btn-danger">🗑️ ' +
+    (isEl ? 'Καθαρισμός' : 'Clear') + '</button>' +
 
-  document.getElementById('reLoginBtn').addEventListener('click', initiateOAuthLogin);
-  document.getElementById('reUndoPointBtn').addEventListener('click', undoLastRoadPoint);
-  document.getElementById('reFinishBtn').addEventListener('click', finishRoad);
-  document.getElementById('reUploadBtn').addEventListener('click', uploadRoad);
-  document.getElementById('reClearBtn').addEventListener('click', clearRoad);
-}
+    '<hr>' +
 
-function checkRoadLoginStatus() {
-  const badge = document.getElementById('reLoginBadge');
-  if (!badge) return;
+    '<div id="reInfo" class="note-description">' + (isEl ? '0 σημεία' : '0 points') + '</div>' +
 
-  const token = sessionStorage.getItem('osm_access_token');
-  if (token) {
-    badge.classList.add('active');
-    badge.textContent = getCurrentLang() === 'el' ? '✅ Συνδεδεμένος' : '✅ Logged in';
-  } else {
-    badge.classList.remove('active');
-    badge.textContent = getCurrentLang() === 'el' ? '❌ Όχι συνδεδεμένος' : '❌ Not logged in';
-  }
-}
+    '</div>';
 
-function isLoggedInRoad() {
-  return !!sessionStorage.getItem('osm_access_token');
-}
+  var loginBtn = document.getElementById('reLoginBtn');
+  var logoutBtn = document.getElementById('reLogoutBtn');
+  var createBtn = document.getElementById('reCreateBtn');
+  var clearBtn = document.getElementById('reClearBtn');
 
-function initiateOAuthLogin() {
-  if (typeof window.initiateOAuth === 'function') {
-    window.initiateOAuth();
-  } else {
-    alert(getCurrentLang() === 'el' ? 'OSM Editor module required for login' : 'OSM Editor module required for login');
-  }
+  if (loginBtn) loginBtn.addEventListener('click', function () {
+    if (typeof initiateOAuth === 'function') initiateOAuth();
+  });
+  if (logoutBtn) logoutBtn.addEventListener('click', function () {
+    localStorage.removeItem('osm_access_token');
+    localStorage.removeItem('osm_user_id');
+    localStorage.removeItem('osm_user_name');
+    localStorage.removeItem('pkce_verifier');
+    refreshLoginStatus();
+    if (window.updateGlobalLoginBtn) window.updateGlobalLoginBtn();
+    showNotification(isEl ? 'Αποσυνδέθηκες' : 'Logged out', 'info');
+  });
+  if (createBtn) createBtn.addEventListener('click', createRoad);
+  if (clearBtn) clearBtn.addEventListener('click', clearRoadEditor);
 }
 
 function addRoadPoint(lat, lng) {
-  roadEditorState.points.push([lat, lng]);
-
-  const marker = L.circleMarker([lat, lng], {
-    radius: 4,
-    fillColor: '#6d4aff',
-    color: 'white',
-    weight: 1,
-    fillOpacity: 0.9,
-  }).addTo(window.appState.map);
-
-  roadEditorState.markers.push(marker);
-
-  updateRoadPolyline();
-  updateRoadPointCount();
+  roadEditorState.points.push({ lat: lat, lng: lng });
+  renderRoadPolyline();
+  updateRoadInfo();
 }
 
-function undoLastRoadPoint() {
-  if (roadEditorState.points.length === 0) return;
+function renderRoadPolyline() {
+  var map = getReMap();
+  if (!map) return;
 
-  roadEditorState.points.pop();
-  const lastMarker = roadEditorState.markers.pop();
-  if (lastMarker) window.appState.map.removeLayer(lastMarker);
-
-  updateRoadPolyline();
-  updateRoadPointCount();
-}
-
-function updateRoadPolyline() {
   if (roadEditorState.polyline) {
-    window.appState.map.removeLayer(roadEditorState.polyline);
+    map.removeLayer(roadEditorState.polyline);
     roadEditorState.polyline = null;
   }
 
   if (roadEditorState.points.length >= 2) {
-    roadEditorState.polyline = L.polyline(roadEditorState.points, {
+    var latlngs = roadEditorState.points.map(function (p) { return [p.lat, p.lng]; });
+    roadEditorState.polyline = L.polyline(latlngs, {
       color: '#6d4aff',
-      weight: 4,
-      opacity: 0.7,
-    }).addTo(window.appState.map);
+      weight: 5,
+      opacity: 0.8,
+      dashArray: null,
+    }).addTo(map);
+  } else if (roadEditorState.points.length === 1) {
+    roadEditorState.polyline = L.circleMarker([roadEditorState.points[0].lat, roadEditorState.points[0].lng], {
+      radius: 8,
+      fillColor: '#ffb143',
+      color: '#ffb143',
+      weight: 2,
+      fillOpacity: 0.8,
+    }).addTo(map);
   }
-
-  document.getElementById('reFinishBtn').disabled = roadEditorState.points.length < 2;
-  document.getElementById('reUploadBtn').disabled = true;
 }
 
-function finishRoad() {
-  if (roadEditorState.points.length < 2) return;
-
-  if (roadEditorState.polyline) {
-    roadEditorState.polyline.setStyle({
-      color: '#22c55e',
-    });
-  }
-
-  document.getElementById('reUploadBtn').disabled = !isLoggedInRoad();
+function updateRoadInfo() {
+  var isEl = getCurrentLang() === 'el';
+  var info = document.getElementById('reInfo');
+  if (!info) return;
+  var count = roadEditorState.points.length;
+  info.textContent = isEl ? count + ' σημεία' : count + ' points';
 }
 
-function updateRoadPointCount() {
-  const isEl = getCurrentLang() === 'el';
-  const count = roadEditorState.points.length;
-  document.getElementById('rePointCount').textContent =
-    isEl ? `${count} σημεία` : `${count} points`;
-}
+async function createRoad() {
+  var isEl = getCurrentLang() === 'el';
 
-async function uploadRoad() {
-  if (!isLoggedInRoad()) {
-    alert(getCurrentLang() === 'el' ? 'Σύνδεσε πρώτα!' : 'Please login first!');
+  if (!window.isLoggedIn || !window.isLoggedIn()) {
+    alert(isEl ? 'Σύνδεσου πρώτα!' : 'Login first!');
     return;
   }
 
-  if (roadEditorState.points.length < 2) return;
-
-  const isEl = getCurrentLang() === 'el';
-  const comment = prompt(isEl ? 'Σχόλιο changeset:' : 'Changeset comment:', 'Added road via Waymark');
-  if (!comment) return;
-
-  const token = sessionStorage.getItem('osm_access_token');
-  const roadType = document.getElementById('reRoadType').value;
-  const roadName = document.getElementById('reRoadName').value.trim();
-  const surface = document.getElementById('reSurface').value;
-
-  const oscXml = buildRoadOsc(roadEditorState.points, roadType, roadName, surface);
-  const result = await uploadOSC(token, oscXml);
-
-  if (result.success) {
-    alert(isEl ? '✅ Ο δρόμος ανέβηκε!' : '✅ Road uploaded!');
-    clearRoad();
-  } else {
-    alert(isEl ? 'Αποτυχία: ' + result.error : 'Failed: ' + result.error);
+  if (roadEditorState.points.length < 2) {
+    alert(isEl ? 'Τουλάχιστον 2 σημεία απαιτούνται' : 'At least 2 points required');
+    return;
   }
+
+  var typeEl = document.getElementById('reRoadType');
+  var nameEl = document.getElementById('reRoadName');
+  var speedEl = document.getElementById('reMaxSpeed');
+  var commentEl = document.getElementById('reComment');
+
+  var roadType = typeEl ? typeEl.value : 'residential';
+  var name = nameEl ? nameEl.value.trim() : '';
+  var maxSpeed = speedEl ? speedEl.value.trim() : '';
+  var comment = commentEl ? commentEl.value.trim() : 'Add road';
+
+  var token = localStorage.getItem('osm_access_token');
+  if (!token) {
+    alert(isEl ? 'Δεν υπάρχει token. Σύνδεσου ξανά.' : 'No token. Login again.');
+    return;
+  }
+
+  // Build OSC for way creation
+  var nodesXml = roadEditorState.points.map(function (p, i) {
+    var id = -(i + 1);
+    return '    <node id="' + id + '" lat="' + p.lat.toFixed(7) + '" lon="' + p.lng.toFixed(7) + '" version="0" />';
+  }).join('\n');
+
+  var ndRefs = roadEditorState.points.map(function (p, i) {
+    return '      <nd ref="' + (-(i + 1)) + '" />';
+  }).join('\n');
+
+  var wayTags = '      <tag k="highway" v="' + escapeXml(roadType) + '" />\n';
+  if (name) wayTags += '      <tag k="name" v="' + escapeXml(name) + '" />\n';
+  if (maxSpeed) wayTags += '      <tag k="maxspeed" v="' + escapeXml(maxSpeed) + '" />\n';
+  wayTags += '      <tag k="created_by" v="Waymark" />';
+
+  var oscXml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<osmChange version="0.6" generator="Waymark">\n' +
+    '  <create>\n' +
+    nodesXml + '\n' +
+    '    <way id="-1" version="0">\n' +
+    ndRefs + '\n' +
+    wayTags + '\n' +
+    '    </way>\n' +
+    '  </create>\n' +
+    '</osmChange>';
+
+  showNotification(isEl ? 'Αναβάθμιση στο OSM...' : 'Uploading to OSM...', 'info');
+
+  uploadOSC(token, oscXml, comment).then(function (result) {
+    if (result.success) {
+      showNotification(
+        isEl ? '✅ Επιτυχία! ID: ' + result.newId : '✅ Success! ID: ' + result.newId,
+        'success'
+      );
+      clearRoadEditor();
+      var map = getReMap();
+      if (map) map.invalidateSize();
+    } else {
+      alert((isEl ? 'Αποτυχία: ' : 'Failed: ') + result.error);
+    }
+  }).catch(function (err) {
+    alert((isEl ? 'Σφάλμα: ' : 'Error: ') + err.message);
+  });
 }
 
-function buildRoadOsc(points, roadType, roadName, surface) {
-  const tagLines = [`      <tag k="highway" v="${escapeXml(roadType)}"/>`];
-  if (roadName) tagLines.push(`      <tag k="name" v="${escapeXml(roadName)}"/>`);
-  if (surface) tagLines.push(`      <tag k="surface" v="${escapeXml(surface)}"/>`);
+function uploadOSC(accessToken, oscContent, changesetComment) {
+  var cfg = window.WAYMARK_CONFIG || {};
+  var proxyUrl = cfg.PROXY_URL;
+  var isEl = getCurrentLang() === 'el';
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<osmChange version="0.6" generator="Waymark">
-  <create>
-${points.map((pt, i) => `    <node id="-${i + 1}" lat="${pt[0]}" lon="${pt[1]}" version="1"/>`).join('\n')}
-    <way id="-1" version="1">
-${points.map((_, i) => `      <nd ref="-${i + 1}"/>`).join('\n')}
-${tagLines.join('\n')}
-    </way>
-  </create>
-</osmChange>`;
+  if (!proxyUrl) {
+    return Promise.reject(new Error('PROXY_URL not configured'));
+  }
+
+  var changesetXml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<osm version="0.6" generator="Waymark">\n' +
+    '<changeset>\n' +
+    '  <tag k="created_by" v="Waymark"/>\n' +
+    '  <tag k="comment" v="' + escapeXml(changesetComment || 'Waymark road edit') + '"/>\n' +
+    '</changeset>\n' +
+    '</osm>';
+
+  return fetch(proxyUrl + '/api/0.6/changeset/open', {
+    method: 'PUT',
+    headers: {
+      'Authorization': 'Bearer ' + accessToken,
+      'Content-Type': 'application/xml',
+    },
+    body: changesetXml,
+  })
+    .then(function (resp) {
+      if (!resp.ok) {
+        return resp.text().then(function (t) {
+          throw new Error(isEl ? 'Άνοιγμα changeset: ' + t : 'Open changeset: ' + t);
+        });
+      }
+      return resp.text();
+    })
+    .then(function (changesetId) {
+      changesetId = changesetId.trim();
+
+      return fetch(proxyUrl + '/api/0.6/changeset/' + changesetId + '/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + accessToken,
+          'Content-Type': 'application/xml',
+        },
+        body: oscContent,
+      })
+        .then(function (uploadResp) {
+          if (!uploadResp.ok) {
+            return uploadResp.text().then(function (t) {
+              throw new Error(isEl ? 'Upload: ' + t : 'Upload: ' + t);
+            });
+          }
+          return uploadResp.text();
+        })
+        .then(function (diffResult) {
+          var idMatch = diffResult.match(/id="(\d+)"/);
+          var newId = idMatch ? idMatch[1] : null;
+
+          return fetch(proxyUrl + '/api/0.6/changeset/' + changesetId + '/close', {
+            method: 'PUT',
+            headers: {
+              'Authorization': 'Bearer ' + accessToken,
+              'Content-Type': 'text/plain',
+            },
+          }).then(function () {
+            return { success: true, newId: newId };
+          });
+        });
+    })
+    .catch(function (err) {
+      return { success: false, error: err.message };
+    });
 }
 
-function clearRoad() {
-  roadEditorState.markers.forEach(m => window.appState.map.removeLayer(m));
-  if (roadEditorState.polyline) window.appState.map.removeLayer(roadEditorState.polyline);
+function clearRoadEditor() {
+  var map = getReMap();
+  if (map && roadEditorState.polyline) {
+    map.removeLayer(roadEditorState.polyline);
+  }
   roadEditorState.points = [];
-  roadEditorState.markers = [];
   roadEditorState.polyline = null;
-  updateRoadPolyline();
-  updateRoadPointCount();
-  document.getElementById('reUploadBtn').disabled = true;
+
+  var nameEl = document.getElementById('reRoadName');
+  var speedEl = document.getElementById('reMaxSpeed');
+  var commentEl = document.getElementById('reComment');
+
+  if (nameEl) nameEl.value = '';
+  if (speedEl) speedEl.value = '';
+  if (commentEl) commentEl.value = '';
+
+  updateRoadInfo();
 }
 
 function _roadEditorCleanup() {
   delete window.onMapClick_roadEditor;
-  if (window.appState?.map) {
-    roadEditorState.markers.forEach(m => window.appState.map.removeLayer(m));
-    if (roadEditorState.polyline) window.appState.map.removeLayer(roadEditorState.polyline);
+  var map = getReMap();
+  if (map && roadEditorState.polyline) {
+    map.removeLayer(roadEditorState.polyline);
   }
-  roadEditorState = { points: [], polyline: null, markers: [], isLoading: false };
+  roadEditorState = { points: [], polyline: null, selectedNodes: [] };
 }
 
 window._roadEditorCleanup = _roadEditorCleanup;

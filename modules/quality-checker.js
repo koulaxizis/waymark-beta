@@ -1,8 +1,13 @@
 /* =========================================================
    WAYMARK — Quality Checker Module
+   Run validation checks on OSM data using Overpass API.
+   No auto-run on activation — user must press "Run".
    ========================================================= */
 
-var qualityCheckerState = { isLoading: false, issues: [] };
+var qualityCheckerState = {
+  isLoading: false,
+  issues: [],
+};
 
 function getQcMap() { return window.appState ? window.appState.map : null; }
 
@@ -19,11 +24,11 @@ function initQualityChecker(map, container, appState) {
   }
 
   window.onMapClick_qualityChecker = function (lat, lng) {};
-  runChecks();
 }
 
 function renderQcUI(container) {
   var isEl = getCurrentLang() === 'el';
+
   container.innerHTML =
     '<div class="quality-checker-ui">' +
     '  <div class="form-group"><label>' + (isEl ? 'Έλεγχος:' : 'Check:') + '</label>' +
@@ -41,7 +46,11 @@ function renderQcUI(container) {
 
   var checkEl = document.getElementById('checkType');
   var runBtn = document.getElementById('runChecksBtn');
-  if (checkEl) checkEl.addEventListener('change', runChecks);
+
+  if (checkEl) checkEl.addEventListener('change', function () {
+    // Only auto-run if we already have results
+    if (qualityCheckerState.issues.length > 0) runChecks();
+  });
   if (runBtn) runBtn.addEventListener('click', runChecks);
 }
 
@@ -60,13 +69,14 @@ async function runChecks() {
 
   try {
     var bounds = map.getBounds();
-    var bbox = bounds.getSouth() + ',' + bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast();
+    var bbox = bounds.getSouth() + ',' + bounds.getWest() + ',' +
+               bounds.getNorth() + ',' + bounds.getEast();
 
     var queries = {
       ways_without_names: '[out:json][timeout:25];(way(' + bbox + ')["highway"]["name"!~".+"];);out body center 50;',
       buildings_no_address: '[out:json][timeout:25];(way(' + bbox + ')["building"]["addr:housenumber"!~".+"];);out body center 50;',
       highways_no_maxspeed: '[out:json][timeout:25];(way(' + bbox + ')["highway"]["maxspeed"!~".+"];);out body center 50;',
-      shops_no_hours: '[out:json][timeout:25];(node(' + bbox + ')["shop"]["opening_hours"!~".+"];);out body center 50;'
+      shops_no_hours: '[out:json][timeout:25];(node(' + bbox + ')["shop"]["opening_hours"!~".+"];);out body center 50;',
     };
 
     var query = queries[checkType];
@@ -93,7 +103,9 @@ async function runChecks() {
 
       var summary = '';
       if (issue.tags) {
-        summary = Object.keys(issue.tags).map(function (k) { return k + ':' + issue.tags[k]; }).join(', ');
+        summary = Object.keys(issue.tags).map(function (k) {
+          return k + ':' + issue.tags[k];
+        }).join(', ');
       }
 
       item.innerHTML =
@@ -102,15 +114,19 @@ async function runChecks() {
 
       item.addEventListener('click', function () {
         var lat = issue.lat || (issue.center ? issue.center.lat : bounds.getCenter().lat);
-        var lon = issue.lon || (issue.center ? issue.center.lon : bounds.getCenter().lng);
-        map.setView([lat, lon], 17);
+        var lng = issue.lon || (issue.center ? issue.center.lon : bounds.getCenter().lng);
+        map.setView([lat, lng], 17);
       });
 
       listEl.appendChild(item);
     });
 
     var statsEl = document.getElementById('issuesStats');
-    if (statsEl) statsEl.textContent = isEl ? 'Βρέθηκαν ' + qualityCheckerState.issues.length + ' θέματα' : 'Found ' + qualityCheckerState.issues.length + ' issues';
+    if (statsEl) {
+      statsEl.textContent = isEl
+        ? 'Βρέθηκαν ' + qualityCheckerState.issues.length + ' θέματα'
+        : 'Found ' + qualityCheckerState.issues.length + ' issues';
+    }
 
   } catch (err) {
     console.error('Quality check error:', err);
@@ -126,11 +142,14 @@ function showQcSpinner(show) {
   if (!btn) return;
   var isEl = getCurrentLang() === 'el';
   btn.disabled = show;
-  btn.textContent = show ? (isEl ? 'Έλεγχος...' : 'Checking...') : (isEl ? 'Εκτέλεση' : 'Run Checks');
+  btn.textContent = show
+    ? (isEl ? 'Έλεγχος...' : 'Checking...')
+    : (isEl ? 'Εκτέλεση' : 'Run Checks');
 }
 
 function _qualityCheckerCleanup() {
   delete window.onMapClick_qualityChecker;
   qualityCheckerState = { isLoading: false, issues: [] };
 }
+
 window._qualityCheckerCleanup = _qualityCheckerCleanup;
