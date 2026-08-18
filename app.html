@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#6d4aff">
   <title>Waymark — OpenStreetMap Editor</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -72,23 +72,26 @@
   <!-- Utils (synchronous, before modules) -->
   <script src="modules/utils.js"></script>
 
-  <!-- Main app (deferred) -->
-  <script src="app.js" defer></script>
+  <!-- Module scripts (synchronous, must load before app.js) -->
+  <script src="modules/nominatim.js"></script>
+  <script src="modules/poi-viewer.js"></script>
+  <script src="modules/gpx-editor.js"></script>
+  <script src="modules/xml-generator.js"></script>
+  <script src="modules/osm-editor.js"></script>
+  <script src="modules/quality-checker.js"></script>
+  <script src="modules/heatmap.js"></script>
+  <script src="modules/tags-lookup.js"></script>
+  <script src="modules/notes-browser.js"></script>
+  <script src="modules/track-recorder.js"></script>
+  <script src="modules/building-editor.js"></script>
+  <script src="modules/road-editor.js"></script>
+  <script src="modules/address-mapper.js"></script>
+  <script src="modules/quest-mode.js"></script>
 
-  <!-- Module scripts (deferred, load after app.js) -->
-  <script src="modules/nominatim.js" defer></script>
-  <script src="modules/poi-viewer.js" defer></script>
-  <script src="modules/gpx-editor.js" defer></script>
-  <script src="modules/xml-generator.js" defer></script>
-  <script src="modules/quality-checker.js" defer></script>
-  <script src="modules/heatmap.js" defer></script>
-  <script src="modules/tags-lookup.js" defer></script>
-  <script src="modules/notes-browser.js" defer></script>
-  <script src="modules/osm-editor.js" defer></script>
-  <script src="modules/track-recorder.js" defer></script>
-  <script src="modules/building-editor.js" defer></script>
-  <script src="modules/road-editor.js" defer></script>
-  <script src="modules/address-mapper.js" defer></script>
-  <script src="modules/quest-mode.js" defer></script>
+  <!-- Leaflet MUST load before app.js -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Main app (loads LAST, after everything is ready) -->
+  <script src="app.js"></script>
 </body>
 </html>

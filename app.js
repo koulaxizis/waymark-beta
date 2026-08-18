@@ -33,8 +33,21 @@
     { id: 'quest-mode',      name: { en: 'Quest Mode',     el: 'Quests' },         init: 'initQuestMode',      cleanup: '_questModeCleanup' },
   ];
 
+  // ── Wait for Leaflet before initializing ──
+  function waitForLeaflet() {
+    if (typeof L !== 'undefined') {
+      initApp();
+    } else {
+      setTimeout(waitForLeaflet, 100);
+    }
+  }
+
   // ── DOM Ready ──
-  document.addEventListener('DOMContentLoaded', initApp);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', waitForLeaflet);
+  } else {
+    waitForLeaflet();
+  }
 
   // ── Initialize App ──
   function initApp() {
