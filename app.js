@@ -39,6 +39,20 @@
     initLocationButton();
     initResizeHandler();
     registerServiceWorker();
+
+    // ── HIDE LOADING OVERLAY ──
+    var overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+      overlay.style.opacity = '0';
+      setTimeout(function () {
+        overlay.style.display = 'none';
+      }, 300);
+    }
+
+    // Force map size recalculation after overlay removal
+    setTimeout(function () {
+      if (window.appState.map) window.appState.map.invalidateSize();
+    }, 350);
   }
 
   function initMap() {
@@ -95,19 +109,16 @@
     layers.forEach(function (layerCfg) {
       var opts = { attribution: layerCfg.attribution, maxZoom: layerCfg.maxZoom || 19 };
       if (layerCfg.subdomains) opts.subdomains = layerCfg.subdomains;
-
       var layer = L.tileLayer(layerCfg.url, opts);
       window.appState.baseLayers[layerCfg.id] = layer;
     });
 
-    // Default layer
     var firstId = layers[0] ? layers[0].id : 'standard';
     if (window.appState.baseLayers[firstId]) {
       window.appState.baseLayers[firstId].addTo(window.appState.map);
       window.appState.currentBaseLayer = firstId;
     }
 
-    // Render layer buttons
     var container = document.getElementById('layerControls');
     if (!container) return;
     container.innerHTML = '';
@@ -167,7 +178,6 @@
     var mod = MODULES.find(function (m) { return m.id === moduleId; });
     if (!mod) return;
 
-    // Deactivate current module if different
     if (window.appState.activeModule && window.appState.activeModule !== moduleId) {
       deactivateModule(window.appState.activeModule);
     }
@@ -222,7 +232,6 @@
   window.deactivateModule = deactivateModule;
   window.switchLayer = switchLayer;
 
-  // Expose for close button
   window.closeActivePanel = function () {
     if (window.appState.activeModule) {
       deactivateModule(window.appState.activeModule);
