@@ -25,22 +25,24 @@
       animation: spin 1s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #message { margin-top: 1rem; color: #a0a0a0; }
+    #message { margin-top: 1rem; color: #a0a0a0; text-align: center; padding: 0 1rem; }
+    #message.error { color: #ef4444; }
   </style>
 </head>
 <body>
-  <div class="spinner"></div>
-  <p id="message">Processing OAuth callback...</p>
+  <div class="spinner" id="spinner"></div>
+  <p id="message">Processing login...</p>
 
   <script>
-    // Process OAuth callback
-    (async () => {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
-      const state = params.get('state');
+    (async function () {
+      var params = new URLSearchParams(window.location.search);
+      var code = params.get('code');
+      var state = params.get('state');
+      var msgEl = document.getElementById('message');
+      var spinnerEl = document.getElementById('spinner');
 
       if (!code || !state) {
-        showError('Invalid callback parameters');
+        showError('Invalid callback: missing code or state');
         return;
       }
 
@@ -49,37 +51,33 @@
         return;
       }
 
-      const cfg = await fetch('config.js').then(r => r.text()).then(t => {
-        // Extract config from JS file
-        const match = t.match(/window\.WAYMARK_CONFIG\s*=\s*\{([^}]+)\}/s);
-        if (!match) return null;
-        // Very rough parse - would need proper eval in production
-        return null;
-      });
-
-      // Use a simpler approach: fetch from known config endpoint
-      // In production, you'd have a separate config API
-      const configUrl = 'https://koulaxizis.github.io/waymark-beta/config.js';
-
       try {
-        const response = await fetch(configUrl);
-        const text = await response.text();
+        // Load config
+        var cfgScript = await fetch('config.js');
+        var cfgText = await cfgScript.text();
 
-        // Parse CLIENT_ID and REDIRECT_URI from the file
-        const clientIdMatch = text.match(/OSM_CLIENT_ID:\s*'([^']+)'/);
-        const redirectUriMatch = text.match(/REDIRECT_URI:\s*'([^']+)'/);
-        const proxyMatch = text.match(/PROXY_URL:\s*'([^']+)'/);
+        var proxyMatch = cfgText.match(/PROXY_URL:\s*'([^']+)'/);
+        var clientIdMatch = cfgText.match(/OSM_CLIENT_ID:\s*'([^']+)'/);
+        var redirectMatch = cfgText.match(/REDIRECT_URI:\s*'([^']+)'/);
 
-        if (!clientIdMatch || !redirectUriMatch || !proxyMatch) {
-          throw new Error('Could not parse config');
+        if (!proxyMatch || !clientIdMatch || !redirectMatch) {
+          throw new Error('Could not parse config.js');
         }
 
-        const clientId = clientIdMatch[1];
-        const redirectUri = decodeURIComponent(redirectUriMatch[1]);
-        const proxyUrl = proxyMatch[1];
+        var proxyUrl = proxyMatch[1];
+        var clientId = clientIdMatch[1];
+        var redirectUri = redirectMatch[1];
 
-        // Exchange code for token
-        const tokenResponse = await fetch(proxyUrl + '/oauth2/token', {
+        // Get PKCE verifier from localStorage (shared across tabs)
+        var verifier = localStorage.getItem('pkce_verifier') || '';
+
+        if (!verifier) {
+          showError('Missing PKCE verifier. Please try logging in again.');
+          return;
+        }
+
+        // Exchange code for token via proxy
+        var tokenResp = await fetch(proxyUrl + '/oauth2/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -87,43 +85,59 @@
             code: code,
             redirect_uri: redirectUri,
             client_id: clientId,
-            code_verifier: sessionStorage.getItem('pkce_verifier') || ''
+            code_verifier: verifier
           })
         });
 
-        const tokenData = await tokenResponse.json();
+        var tokenData = await tokenResp.json().catch(function () { return {}; });
 
-        if (tokenData.access_token) {
-          // Store token in sessionStorage
-          sessionStorage.setItem('osm_access_token', tokenData.access_token);
+        if (!tokenData.access_token) {
+          console.error('Token exchange response:', tokenData);
+          showError('Token exchange failed: ' + (tokenData.error_description || tokenData.error || JSON.stringify(tokenData)));
+          return;
+        }
 
-          // Get user info
-          const userInfoResponse = await fetch(proxyUrl + '/api/0.6/user/details', {
-            headers: { Authorization: `Bearer ${tokenData.access_token}` }
+        // Store token in localStorage (persists across pages)
+        localStorage.setItem('osm_access_token', tokenData.access_token);
+        localStorage.removeItem('pkce_verifier');
+
+        // Fetch user details via proxy
+        try {
+          var userResp = await fetch(proxyUrl + '/api/0.6/user/details', {
+            headers: { 'Authorization': 'Bearer ' + tokenData.access_token }
           });
 
-          const userInfo = await userInfoResponse.json();
-          const userId = userInfo.osm?.user?.id;
-          if (userId) {
-            sessionStorage.setItem('osm_user_id', userId.toString());
+          if (userResp.ok) {
+            var userText = await userResp.text();
+            var idMatch = userText.match(/<user[^>]*id="(\d+)"/);
+            if (idMatch) {
+              localStorage.setItem('osm_user_id', idMatch[1]);
+            }
           }
-
-          // Success - redirect to app
-          window.location.href = 'app.html';
-        } else {
-          showError('Token exchange failed');
+        } catch (e) {
+          console.error('User details fetch failed:', e);
         }
+
+        // Success — redirect to app
+        msgEl.textContent = '✅ Login successful! Redirecting...';
+        msgEl.style.color = '#22c55e';
+        spinnerEl.style.display = 'none';
+
+        setTimeout(function () {
+          window.location.href = 'app.html';
+        }, 800);
+
       } catch (err) {
-        console.error(err);
+        console.error('OAuth callback error:', err);
         showError('Error: ' + err.message);
       }
-    })();
 
-    function showError(msg) {
-      document.querySelector('.spinner').style.display = 'none';
-      document.getElementById('message').textContent = 'Error: ' + msg;
-      document.getElementById('message').style.color = '#ef4444';
-    }
+      function showError(msg) {
+        spinnerEl.style.display = 'none';
+        msgEl.textContent = msg;
+        msgEl.classList.add('error');
+      }
+    })();
   </script>
 </body>
-</html> 
+</html>
